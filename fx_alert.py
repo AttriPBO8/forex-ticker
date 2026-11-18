@@ -85,7 +85,7 @@ def _by_base(pairs, fetch_base):
 def fetch_frankfurter(pairs: list[str]) -> dict[str, float]:
     def one(base, quotes):
         q = urllib.parse.urlencode({"from": base, "to": ",".join(quotes)})
-        return _get_json(f"https://api.frankfurter.app/latest?{q}")["rates"]
+        return _get_json(f"https://api.frankfurter.dev/v1/latest?{q}")["rates"]
     return _by_base(pairs, one)
 
 
@@ -221,7 +221,7 @@ def fetch_history(pairs, today=None):
         series = {}
         for start in ranges:
             q = urllib.parse.urlencode({"from": base, "to": ",".join(sorted(quotes))})
-            data = _get_json(f"https://api.frankfurter.app/{start.isoformat()}..?{q}")
+            data = _get_json(f"https://api.frankfurter.dev/v1/{start.isoformat()}..?{q}")
             for day, vals in data.get("rates", {}).items():
                 series.setdefault(day, {}).update(vals)
         for qcur in quotes:

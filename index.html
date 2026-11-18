@@ -303,13 +303,26 @@ function groupByBase(pairs) {
   return g;
 }
 
+// Frankfurter moved to api.frankfurter.dev/v1. The old .app domain answers with a redirect
+// that browsers block (no CORS header on the redirect), so call the new host first.
+const FRANKFURTER_HOSTS = ["https://api.frankfurter.dev/v1", "https://api.frankfurter.app"];
+async function frankfurter(path) {
+  let lastErr;
+  for (const host of FRANKFURTER_HOSTS) {
+    try {
+      const r = await fetch(host + path);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return await r.json();
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr;
+}
+
 const PROVIDERS = [
   ["Frankfurter (European Central Bank)", async pairs => {
     const out = {}; let date = "";
     for (const [b, qs] of Object.entries(groupByBase(pairs))) {
-      const r = await fetch(`https://api.frankfurter.app/latest?from=${b}&to=${qs.join(",")}`);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const d = await r.json(); date = d.date;
+      const d = await frankfurter(`/latest?from=${b}&to=${qs.join(",")}`); date = d.date;
       for (const q of qs) { if (d.rates[q] == null) throw new Error(`${b}/${q} missing`); out[`${b}/${q}`] = d.rates[q]; }
     }
     return { rates: out, asOf: date };
@@ -350,9 +363,7 @@ async function loadHistory(pairs) {
     const series = {};
     const parts = await Promise.all(chunks.map(async ([from, to]) => {
       const start = isoDay(new Date(today - from * 864e5)), end = isoDay(new Date(today - to * 864e5));
-      const r = await fetch(`https://api.frankfurter.app/${start}..${end}?from=${b}&to=${qs.join(",")}`);
-      if (!r.ok) throw new Error(`history HTTP ${r.status}`);
-      return r.json();
+      return frankfurter(`/${start}..${end}?from=${b}&to=${qs.join(",")}`);
     }));
     for (const d of parts) for (const [day, vals] of Object.entries(d.rates || {})) series[day] = { ...(series[day] || {}), ...vals };
     for (const q of qs) {
@@ -455,7 +466,11 @@ async function update() {
       try {
         history = await loadHistory(pairs); historyDay = day;
         if (window.FXSignals) window.FXSignals.render(history);
-      } catch (e) { console.warn("trends unavailable", e); }
+      } catch (e) {
+        console.warn("trends unavailable", e);
+        document.getElementById("signals").innerHTML =
+          `<div class="error glass">Could not load past rates, so trends and buy signals are unavailable right now (${esc(e.message)}). Press Refresh to try again.</div>`;
+      }
     }
     lastData = data;
     render(data);
