@@ -12,6 +12,7 @@ pairs:
   - CAD/INR
   - USD/INR
   - CAD/USD
+  - USD/CAD
 
 # Email window. The checker runs every hour, but emails only go out inside this window.
 # Times use the timezone below, and daylight saving time is handled automatically.
@@ -28,11 +29,12 @@ mode: both
 
 # Alert rules. Operators: "<", "<=", ">", ">=".
 # Optional "note" is shown in the email.
-rules:
-  - pair: CAD/INR
-    op: "<"
-    value: 65.6
-    note: "CAD is weak against INR"
+# No rules are active right now, so nothing is highlighted. To add one, uncomment it.
+rules: []
+  # - pair: CAD/INR
+  #   op: "<"
+  #   value: 65.6
+  #   note: "CAD is weak against INR"
   # - pair: USD/INR
   #   op: ">"
   #   value: 89.0
@@ -68,3 +70,7 @@ decimals:
   CAD/INR: 4
   USD/INR: 4
   CAD/USD: 5
+  USD/CAD: 5
+
+# Conversion examples shown for each pair, e.g. "100 CAD = 6,541.00 INR".
+conversion_amount: 100

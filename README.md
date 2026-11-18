@@ -1,6 +1,6 @@
 # FX Rate Alerts
 
-Checks CAD→INR, USD→INR and CAD→USD every hour and emails a list of recipients
+Checks CAD→INR, USD→INR, CAD→USD and USD→CAD every hour and emails a list of recipients
 between 7 AM and 7 PM US Eastern (daylight saving handled automatically). Emails
 carry the latest rates, the change since the previous email, and any alerts
 from your rules (for example "CAD/INR below 65.6").

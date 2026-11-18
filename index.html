@@ -32,10 +32,20 @@
   .pair { font-weight: 600; font-size: 16px; }
   .pair small { color: var(--muted); font-weight: 400; font-size: 13px; margin-left: 6px; }
   .rate { font-size: 28px; font-variant-numeric: tabular-nums; font-weight: 600; }
-  .delta { font-size: 13px; font-variant-numeric: tabular-nums; }
-  .delta.up { color: var(--up); } .delta.down { color: var(--down); }
   .rules { margin-top: 8px; font-size: 13px; color: var(--muted); }
   .rules .hit { color: var(--alert-line); font-weight: 600; }
+  .trends { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 12px; }
+  .trend { border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; text-align: center; }
+  .trend .lbl { display: block; font-size: 11px; color: var(--muted); letter-spacing: .04em; }
+  .trend .val { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .trend.up .val { color: var(--up); } .trend.down .val { color: var(--down); } .trend.na .val { color: var(--muted); font-weight: 400; }
+  .spark { display: block; width: 100%; height: 44px; margin-top: 10px; }
+  .spark-cap { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
+  .conv { margin-top: 10px; font-size: 14px; font-variant-numeric: tabular-nums; }
+  .conv span { color: var(--muted); white-space: nowrap; }
+  .conv b { white-space: nowrap; }
+  .amount { font-size: 13px; color: var(--muted); }
+  .amount input { width: 90px; font: inherit; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); color: var(--text); }
   .links { margin-top: 8px; font-size: 13px; }
   .links a { color: var(--link); margin-right: 14px; text-decoration: none; }
   .links a:hover { text-decoration: underline; }
@@ -48,24 +58,29 @@
 <main>
   <header>
     <h1>Forex Ticker</h1>
-    <div class="status"><span id="status">Loading…</span> <button id="refresh" type="button">Refresh</button></div>
+    <div class="status">
+      <label class="amount">Amount <input id="amount" type="number" min="0" step="any" value="100"></label>
+      <span id="status">Loading…</span> <button id="refresh" type="button">Refresh</button>
+    </div>
   </header>
   <div id="cards" class="grid" aria-live="polite"></div>
   <div id="error" class="error" hidden></div>
   <footer>
-    Rates: <span id="source">–</span>. Refreshes every 5 minutes. Alert levels come from
-    <a href="config.yaml">config.yaml</a>. Change shown is since this page was opened.
-    Free rate sources update about once a working day, so the number may not move between refreshes.
+    Rates: <span id="source">–</span>. Refreshes every 5 minutes. Trends compare today's rate with
+    European Central Bank closes 1 and 5 working days and 1 and 3 months ago; the line shows the last 3 months.
+    Free rate sources update about once a working day, so numbers may not move between refreshes.
+    Pairs and optional alert levels come from <a href="config.yaml">config.yaml</a>.
   </footer>
 </main>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
 <script>
 const DEFAULT_CONFIG = {
-  pairs: ["CAD/INR", "USD/INR", "CAD/USD"],
-  rules: [{ pair: "CAD/INR", op: "<", value: 65.6, note: "CAD is weak against INR" }],
+  pairs: ["CAD/INR", "USD/INR", "CAD/USD", "USD/CAD"],
+  rules: [],
+  conversion_amount: 100,
   chart_links: ["tradingview", "google"],
-  decimals: { "CAD/INR": 4, "USD/INR": 4, "CAD/USD": 5 },
+  decimals: { "CAD/INR": 4, "USD/INR": 4, "CAD/USD": 5, "USD/CAD": 5 },
 };
 const NAMES = { CAD: "Canadian Dollar", USD: "US Dollar", INR: "Indian Rupee" };
 const OPS = { "<": (a, b) => a < b, "<=": (a, b) => a <= b, ">": (a, b) => a > b, ">=": (a, b) => a >= b };
@@ -77,7 +92,9 @@ const CHART_SITES = {
 };
 const REFRESH_MS = 5 * 60 * 1000;
 let config = DEFAULT_CONFIG;
-const firstSeen = {};
+let lastData = null;
+let history = {};
+let historyDay = "";
 
 const split = p => p.toUpperCase().replace(/\s/g, "").split("/");
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -130,6 +147,60 @@ async function fetchRates(pairs) {
   throw new Error("Could not load rates. " + errors.join("; "));
 }
 
+const isoDay = d => d.toISOString().slice(0, 10);
+const shiftMonths = (d, n) => { const x = new Date(d); const day = x.getUTCDate(); x.setUTCDate(1); x.setUTCMonth(x.getUTCMonth() - n);
+  const last = new Date(Date.UTC(x.getUTCFullYear(), x.getUTCMonth() + 1, 0)).getUTCDate(); x.setUTCDate(Math.min(day, last)); return x; };
+
+// Daily ECB closes for ~100 days. A short range (always daily) plus a long range, merged.
+async function loadHistory(pairs) {
+  const today = new Date();
+  const out = {};
+  for (const [b, qs] of Object.entries(groupByBase(pairs))) {
+    const series = {};
+    for (const back of [14, 100]) {
+      const start = isoDay(new Date(today - back * 864e5));
+      const r = await fetch(`https://api.frankfurter.app/${start}..?from=${b}&to=${qs.join(",")}`);
+      if (!r.ok) throw new Error(`history HTTP ${r.status}`);
+      const d = await r.json();
+      for (const [day, vals] of Object.entries(d.rates || {})) series[day] = { ...(series[day] || {}), ...vals };
+    }
+    for (const q of qs) {
+      out[`${b}/${q}`] = Object.keys(series).sort().filter(day => series[day][q] != null).map(day => [day, series[day][q]]);
+    }
+  }
+  return out;
+}
+
+const PERIODS = [["1D", "points", 1], ["5D", "points", 5], ["1M", "months", 1], ["3M", "months", 3]];
+function trends(points, current) {
+  const res = {};
+  if (!points || !points.length) return res;
+  const lastDate = new Date(points[points.length - 1][0] + "T00:00:00Z");
+  for (const [label, kind, n] of PERIODS) {
+    let old = null;
+    if (kind === "points") { if (points.length > n) old = points[points.length - 1 - n][1]; }
+    else { const target = isoDay(shiftMonths(lastDate, n)); const older = points.filter(([d]) => d <= target); if (older.length) old = older[older.length - 1][1]; }
+    res[label] = old ? (current - old) / old * 100 : null;
+  }
+  return res;
+}
+
+function sparkline(points, current) {
+  if (!points || points.length < 2) return "";
+  const vals = points.map(p => p[1]);
+  const min = Math.min(...vals, current), max = Math.max(...vals, current);
+  const W = 300, H = 44, pad = 3;
+  const xy = vals.map((v, i) => [pad + i * (W - 2 * pad) / (vals.length - 1), H - pad - (max === min ? 0.5 : (v - min) / (max - min)) * (H - 2 * pad)]);
+  const rising = vals[vals.length - 1] >= vals[0];
+  const color = rising ? "var(--up)" : "var(--down)";
+  const d = xy.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join("");
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="3 month trend">
+    <path d="${d}" fill="none" stroke="${color}" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg>
+    <div class="spark-cap"><span>${points[0][0]}</span><span>3-month range ${min.toFixed(4)} to ${max.toFixed(4)}</span><span>${points[points.length - 1][0]}</span></div>`;
+}
+
+const money = x => Math.abs(x) >= 1 ? x.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : x.toFixed(4);
+
 function render(data) {
   const pairs = config.pairs.map(p => p.toUpperCase());
   const dec = config.decimals || {};
@@ -139,11 +210,15 @@ function render(data) {
     const [b, q] = split(p);
     const rate = data.rates[p];
     const d = dec[p] ?? 4;
-    firstSeen[p] ??= rate;
-    const diff = rate - firstSeen[p];
-    const deltaCls = diff > 0 ? "up" : diff < 0 ? "down" : "";
-    const delta = diff === 0 ? "No change since opened"
-      : `${diff > 0 ? "+" : ""}${diff.toFixed(d)} (${(diff / firstSeen[p] * 100).toFixed(2)}%) since opened`;
+    const tr = trends(history[p], rate);
+    const trendHtml = PERIODS.map(([lbl]) => {
+      const v = tr[lbl];
+      const cls = v == null ? "na" : v > 0 ? "up" : v < 0 ? "down" : "";
+      return `<div class="trend ${cls}"><span class="lbl">${lbl}</span><span class="val">${v == null ? "n/a" : (v > 0 ? "+" : "") + v.toFixed(2) + "%"}</span></div>`;
+    }).join("");
+    const amt = Number(document.getElementById("amount").value) || Number(config.conversion_amount) || 100;
+    const convHtml = `<div class="conv">${amt.toLocaleString()} ${b} = <b>${money(amt * rate)} ${q}</b>
+      <span>&nbsp;·&nbsp; ${amt.toLocaleString()} ${q} = ${money(amt / rate)} ${b}</span></div>`;
     const myRules = rules.filter(r => r.pair.toUpperCase() === p && OPS[r.op]);
     const hits = myRules.filter(r => OPS[r.op](rate, Number(r.value)));
     const rulesHtml = myRules.length ? `<div class="rules">Alert levels: ${myRules.map(r => {
@@ -157,7 +232,9 @@ function render(data) {
         <div class="pair">${b} → ${q}<small>${esc(NAMES[b] || b)} to ${esc(NAMES[q] || q)}</small></div>
         <div class="rate">${rate.toFixed(d)}</div>
       </div>
-      <div class="row"><span></span><span class="delta ${deltaCls}">${delta}</span></div>
+      ${convHtml}
+      <div class="trends">${trendHtml}</div>
+      ${sparkline(history[p], rate)}
       ${rulesHtml}
       <div class="links">${links}</div>
     </section>`;
@@ -171,7 +248,13 @@ async function update() {
   const err = document.getElementById("error");
   status.textContent = "Updating…";
   try {
-    const data = await fetchRates(config.pairs.map(p => p.toUpperCase()));
+    const pairs = config.pairs.map(p => p.toUpperCase());
+    const data = await fetchRates(pairs);
+    const day = isoDay(new Date()) + "-" + new Date().getUTCHours();
+    if (historyDay !== day) {
+      try { history = await loadHistory(pairs); historyDay = day; } catch (e) { console.warn("trends unavailable", e); }
+    }
+    lastData = data;
     render(data);
     err.hidden = true;
     status.textContent = "Updated " + new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
@@ -182,7 +265,12 @@ async function update() {
 }
 
 document.getElementById("refresh").addEventListener("click", update);
-loadConfig().then(update);
+document.getElementById("amount").addEventListener("input", () => { if (lastData) render(lastData); });
+loadConfig().then(() => {
+  const a = document.getElementById("amount");
+  if (config.conversion_amount) a.value = config.conversion_amount;
+  update();
+});
 setInterval(update, REFRESH_MS);
 </script>
 </body>
