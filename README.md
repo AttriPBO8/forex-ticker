@@ -7,6 +7,9 @@ from your rules (for example "CAD/INR below 65.6").
 
 Runs free on GitHub Actions. No server needed.
 
+**Setup checklist:** see [TODO.md](TODO.md).
+**Live rates page:** https://attripbo8.github.io/forex-ticker/ (`index.html`, GitHub Pages).
+
 ## Files
 
 | File | What it is |
@@ -14,6 +17,8 @@ Runs free on GitHub Actions. No server needed.
 | `config.yaml` | Recipients, pairs, email window, mode, alert rules. The only file you normally edit. |
 | `fx_alert.py` | The checker. |
 | `.github/workflows/fx-alert.yml` | Hourly schedule on GitHub Actions. |
+| `index.html` | Live rates webpage (auto-refresh, alert highlights, chart links). |
+| `TODO.md` | Remaining setup steps. |
 | `state.json` | Created automatically. Remembers last-sent rates and which alerts already fired. |
 
 ## Setup (about 10 minutes)

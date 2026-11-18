@@ -161,6 +161,19 @@ def in_window(now_local: datetime, start: str, end: str) -> bool:
 
 # ---------------------------------------------------------------- email
 
+CHART_SITES = {
+    "tradingview": ("TradingView", "https://www.tradingview.com/chart/?symbol=FX_IDC:{b}{q}"),
+    "google": ("Google Finance", "https://www.google.com/finance/quote/{b}-{q}"),
+    "xe": ("XE", "https://www.xe.com/currencycharts/?from={b}&to={q}"),
+    "yahoo": ("Yahoo Finance", "https://finance.yahoo.com/quote/{b}{q}%3DX/chart"),
+}
+
+
+def chart_links(pair, sites):
+    b, q = _split(pair)
+    return [(CHART_SITES[s][0], CHART_SITES[s][1].format(b=b, q=q)) for s in sites if s in CHART_SITES]
+
+
 def fmt(pair, value, decimals):
     return f"{value:.{decimals.get(pair, 4)}f}"
 
@@ -168,6 +181,7 @@ def fmt(pair, value, decimals):
 def build_email(cfg, rates, provider, firing, last_sent_rates, now_local):
     dec = cfg.get("decimals", {}) or {}
     pairs = [p.upper() for p in cfg["pairs"]]
+    sites = cfg.get("chart_links", ["tradingview", "google"]) or []
     stamp = now_local.strftime("%a %b %d, %I:%M %p %Z")
 
     rows_txt, rows_html = [], []
@@ -178,12 +192,18 @@ def build_email(cfg, rates, provider, firing, last_sent_rates, now_local):
             d = r - last_sent_rates[p]
             pct = d / last_sent_rates[p] * 100 if last_sent_rates[p] else 0
             change = f"{d:+.{dec.get(p, 4)}f} ({pct:+.2f}%)"
+        links = chart_links(p, sites)
         rows_txt.append(f"  {p:<8} {fmt(p, r, dec):>12}   {change}")
+        for name, url in links:
+            rows_txt.append(f"           {name} chart: {url}")
+        links_html = " &middot; ".join(
+            f"<a href='{escape(url)}' style='color:#1a5fb4'>{escape(name)}</a>" for name, url in links)
         color = "#555" if not change else ("#0a7a28" if r >= last_sent_rates[p] else "#b00020")
         rows_html.append(
             f"<tr><td style='padding:4px 12px'><b>{escape(p)}</b></td>"
             f"<td style='padding:4px 12px;text-align:right;font-family:monospace'>{fmt(p, r, dec)}</td>"
-            f"<td style='padding:4px 12px;color:{color};font-family:monospace'>{escape(change) or '&nbsp;'}</td></tr>"
+            f"<td style='padding:4px 12px;color:{color};font-family:monospace'>{escape(change) or '&nbsp;'}</td>"
+            f"<td style='padding:4px 12px'>{links_html or '&nbsp;'}</td></tr>"
         )
 
     alert_txt, alert_html = [], []
@@ -214,7 +234,8 @@ def build_email(cfg, rates, provider, firing, last_sent_rates, now_local):
         html += ("<div style='background:#fff4e5;border-left:4px solid #e67700;padding:8px 12px;margin-bottom:12px'>"
                  f"<b>Alerts</b><ul style='margin:4px 0'>{''.join(alert_html)}</ul></div>")
     html += ("<table style='border-collapse:collapse'><tr style='color:#777'><th align='left' style='padding:4px 12px'>Pair</th>"
-             "<th align='right' style='padding:4px 12px'>Rate</th><th align='left' style='padding:4px 12px'>Change</th></tr>"
+             "<th align='right' style='padding:4px 12px'>Rate</th><th align='left' style='padding:4px 12px'>Change</th>"
+             "<th align='left' style='padding:4px 12px'>Chart</th></tr>"
              + "".join(rows_html) + "</table>")
     html += f"<p style='color:#888;font-size:12px'>Change is since the previous email. Source: {escape(provider)}.</p></div>"
     return subject, text, html
