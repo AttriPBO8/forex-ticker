@@ -1,0 +1,64 @@
+# FX Rate Alerts configuration
+# Edit this file to change who gets emails, which pairs are watched, and the alert rules.
+
+# Who receives the emails.
+# This repo is public, so real addresses go in the RECIPIENTS repo secret
+# (comma separated), which overrides this list. Leave this empty here.
+recipients: []
+
+# Currency pairs to watch, written as BASE/QUOTE.
+# "CAD/INR" means: how many Indian Rupees one Canadian Dollar buys.
+pairs:
+  - CAD/INR
+  - USD/INR
+  - CAD/USD
+
+# Email window. The checker runs every hour, but emails only go out inside this window.
+# Times use the timezone below, and daylight saving time is handled automatically.
+schedule:
+  timezone: America/New_York
+  send_from: "07:00"   # first hour emails may go out (inclusive)
+  send_until: "19:00"  # last hour emails may go out (inclusive, so 7 PM still sends)
+
+# What to email:
+#   digest - send the latest rates every hour inside the window
+#   alerts - send only when one of the rules below is triggered
+#   both   - send the hourly digest, and mark any triggered alerts at the top
+mode: both
+
+# Alert rules. Operators: "<", "<=", ">", ">=".
+# Optional "note" is shown in the email.
+rules:
+  - pair: CAD/INR
+    op: "<"
+    value: 65.6
+    note: "CAD is weak against INR"
+  # - pair: USD/INR
+  #   op: ">"
+  #   value: 89.0
+  # - pair: CAD/USD
+  #   op: ">="
+  #   value: 0.74
+
+# Avoid repeating the same alert every hour.
+# An alert fires once when its condition becomes true. It fires again only if the
+# condition clears and becomes true again, or after this many hours (0 = never repeat
+# while it stays true).
+alert_repeat_after_hours: 24
+
+# Where rates come from, tried in order. The first one that works is used.
+#   twelvedata  - intraday rates (updates during the day). Needs a free API key in the
+#                 TWELVEDATA_API_KEY secret. Skipped automatically when no key is set.
+#   frankfurter - free, no key, European Central Bank reference rates (updates once a
+#                 working day, around 16:00 CET).
+#   open_er_api - free, no key, updates once a day.
+providers:
+  - twelvedata
+  - frankfurter
+  - open_er_api
+
+# Decimal places shown for each pair in emails.
+decimals:
+  CAD/INR: 4
+  USD/INR: 4
+  CAD/USD: 5

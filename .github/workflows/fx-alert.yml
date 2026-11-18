@@ -1,0 +1,53 @@
+name: FX rate alerts
+
+on:
+  schedule:
+    # Every hour at minute 5 (UTC). The script itself decides whether it is
+    # inside the 7 AM to 7 PM Eastern email window, so DST is handled there.
+    - cron: "5 * * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Send an email now even outside the time window"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write   # to save state.json (alert dedupe + change since last email)
+
+concurrency:
+  group: fx-alert
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install pyyaml==6.0.2
+
+      - name: Check rates and send email
+        env:
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          MAIL_FROM: ${{ secrets.MAIL_FROM }}
+          RECIPIENTS: ${{ secrets.RECIPIENTS }}
+          TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
+        run: python fx_alert.py ${{ inputs.force && '--force' || '' }}
+
+      - name: Save state
+        run: |
+          if [ -n "$(git status --porcelain state.json)" ]; then
+            git config user.name "fx-alert-bot"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add state.json
+            git commit -m "Update FX alert state [skip ci]"
+            git push
+          fi
