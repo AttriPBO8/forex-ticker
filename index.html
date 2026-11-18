@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Forex Ticker</title>
+<meta name="description" content="Live CAD/INR, USD/INR and CAD/USD rates with alert levels and chart links.">
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #16181d; --muted: #6b7280; --line: #e5e7eb;
+    --up: #0a7a28; --down: #b42318; --alert-bg: #fff4e5; --alert-line: #e67700; --link: #1a5fb4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1115; --card: #181b21; --text: #e8eaed; --muted: #9aa0a6; --line: #2a2e36;
+      --up: #4ade80; --down: #f87171; --alert-bg: #2b1f0e; --alert-line: #f59e0b; --link: #7ab4ff;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 28px 16px 48px; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; }
+  h1 { font-size: 22px; margin: 0; }
+  .status { color: var(--muted); font-size: 13px; }
+  button { font: inherit; font-size: 13px; padding: 5px 12px; border-radius: 6px; cursor: pointer;
+           border: 1px solid var(--line); background: var(--card); color: var(--text); }
+  .grid { display: grid; gap: 12px; margin-top: 20px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; }
+  .card.alert { background: var(--alert-bg); border-color: var(--alert-line); border-left-width: 5px; }
+  .row { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; }
+  .pair { font-weight: 600; font-size: 16px; }
+  .pair small { color: var(--muted); font-weight: 400; font-size: 13px; margin-left: 6px; }
+  .rate { font-size: 28px; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .delta { font-size: 13px; font-variant-numeric: tabular-nums; }
+  .delta.up { color: var(--up); } .delta.down { color: var(--down); }
+  .rules { margin-top: 8px; font-size: 13px; color: var(--muted); }
+  .rules .hit { color: var(--alert-line); font-weight: 600; }
+  .links { margin-top: 8px; font-size: 13px; }
+  .links a { color: var(--link); margin-right: 14px; text-decoration: none; }
+  .links a:hover { text-decoration: underline; }
+  .error { color: var(--down); margin-top: 16px; }
+  footer { margin-top: 28px; color: var(--muted); font-size: 12px; }
+  footer a { color: var(--link); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Forex Ticker</h1>
+    <div class="status"><span id="status">Loading…</span> <button id="refresh" type="button">Refresh</button></div>
+  </header>
+  <div id="cards" class="grid" aria-live="polite"></div>
+  <div id="error" class="error" hidden></div>
+  <footer>
+    Rates: <span id="source">–</span>. Refreshes every 5 minutes. Alert levels come from
+    <a href="config.yaml">config.yaml</a>. Change shown is since this page was opened.
+    Free rate sources update about once a working day, so the number may not move between refreshes.
+  </footer>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
+<script>
+const DEFAULT_CONFIG = {
+  pairs: ["CAD/INR", "USD/INR", "CAD/USD"],
+  rules: [{ pair: "CAD/INR", op: "<", value: 65.6, note: "CAD is weak against INR" }],
+  chart_links: ["tradingview", "google"],
+  decimals: { "CAD/INR": 4, "USD/INR": 4, "CAD/USD": 5 },
+};
+const NAMES = { CAD: "Canadian Dollar", USD: "US Dollar", INR: "Indian Rupee" };
+const OPS = { "<": (a, b) => a < b, "<=": (a, b) => a <= b, ">": (a, b) => a > b, ">=": (a, b) => a >= b };
+const CHART_SITES = {
+  tradingview: ["TradingView", (b, q) => `https://www.tradingview.com/chart/?symbol=FX_IDC:${b}${q}`],
+  google: ["Google Finance", (b, q) => `https://www.google.com/finance/quote/${b}-${q}`],
+  xe: ["XE", (b, q) => `https://www.xe.com/currencycharts/?from=${b}&to=${q}`],
+  yahoo: ["Yahoo Finance", (b, q) => `https://finance.yahoo.com/quote/${b}${q}%3DX/chart`],
+};
+const REFRESH_MS = 5 * 60 * 1000;
+let config = DEFAULT_CONFIG;
+const firstSeen = {};
+
+const split = p => p.toUpperCase().replace(/\s/g, "").split("/");
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+async function loadConfig() {
+  try {
+    const res = await fetch("config.yaml", { cache: "no-store" });
+    if (!res.ok) throw new Error(res.status);
+    const cfg = jsyaml.load(await res.text());
+    config = { ...DEFAULT_CONFIG, ...cfg };
+  } catch (e) { config = DEFAULT_CONFIG; }
+}
+
+function groupByBase(pairs) {
+  const g = {};
+  for (const p of pairs) { const [b, q] = split(p); (g[b] ||= []).push(q); }
+  return g;
+}
+
+const PROVIDERS = [
+  ["Frankfurter (European Central Bank)", async pairs => {
+    const out = {}; let date = "";
+    for (const [b, qs] of Object.entries(groupByBase(pairs))) {
+      const r = await fetch(`https://api.frankfurter.app/latest?from=${b}&to=${qs.join(",")}`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const d = await r.json(); date = d.date;
+      for (const q of qs) { if (d.rates[q] == null) throw new Error(`${b}/${q} missing`); out[`${b}/${q}`] = d.rates[q]; }
+    }
+    return { rates: out, asOf: date };
+  }],
+  ["open.er-api.com", async pairs => {
+    const out = {}; let asOf = "";
+    for (const [b, qs] of Object.entries(groupByBase(pairs))) {
+      const r = await fetch(`https://open.er-api.com/v6/latest/${b}`);
+      const d = await r.json();
+      if (d.result !== "success") throw new Error("bad response");
+      asOf = new Date(d.time_last_update_unix * 1000).toLocaleString();
+      for (const q of qs) out[`${b}/${q}`] = d.rates[q];
+    }
+    return { rates: out, asOf };
+  }],
+];
+
+async function fetchRates(pairs) {
+  const errors = [];
+  for (const [name, fn] of PROVIDERS) {
+    try { return { ...(await fn(pairs)), source: name }; }
+    catch (e) { errors.push(`${name}: ${e.message}`); }
+  }
+  throw new Error("Could not load rates. " + errors.join("; "));
+}
+
+function render(data) {
+  const pairs = config.pairs.map(p => p.toUpperCase());
+  const dec = config.decimals || {};
+  const sites = config.chart_links || [];
+  const rules = config.rules || [];
+  const html = pairs.map(p => {
+    const [b, q] = split(p);
+    const rate = data.rates[p];
+    const d = dec[p] ?? 4;
+    firstSeen[p] ??= rate;
+    const diff = rate - firstSeen[p];
+    const deltaCls = diff > 0 ? "up" : diff < 0 ? "down" : "";
+    const delta = diff === 0 ? "No change since opened"
+      : `${diff > 0 ? "+" : ""}${diff.toFixed(d)} (${(diff / firstSeen[p] * 100).toFixed(2)}%) since opened`;
+    const myRules = rules.filter(r => r.pair.toUpperCase() === p && OPS[r.op]);
+    const hits = myRules.filter(r => OPS[r.op](rate, Number(r.value)));
+    const rulesHtml = myRules.length ? `<div class="rules">Alert levels: ${myRules.map(r => {
+        const hit = hits.includes(r);
+        return `<span class="${hit ? "hit" : ""}">${esc(r.op)} ${esc(r.value)}${hit ? " (triggered" + (r.note ? ": " + esc(r.note) : "") + ")" : ""}</span>`;
+      }).join(" · ")}</div>` : "";
+    const links = sites.filter(s => CHART_SITES[s]).map(s =>
+      `<a href="${CHART_SITES[s][1](b, q)}" target="_blank" rel="noopener">${CHART_SITES[s][0]} chart ↗</a>`).join("");
+    return `<section class="card${hits.length ? " alert" : ""}">
+      <div class="row">
+        <div class="pair">${b} → ${q}<small>${esc(NAMES[b] || b)} to ${esc(NAMES[q] || q)}</small></div>
+        <div class="rate">${rate.toFixed(d)}</div>
+      </div>
+      <div class="row"><span></span><span class="delta ${deltaCls}">${delta}</span></div>
+      ${rulesHtml}
+      <div class="links">${links}</div>
+    </section>`;
+  }).join("");
+  document.getElementById("cards").innerHTML = html;
+  document.getElementById("source").textContent = `${data.source}, as of ${data.asOf}`;
+}
+
+async function update() {
+  const status = document.getElementById("status");
+  const err = document.getElementById("error");
+  status.textContent = "Updating…";
+  try {
+    const data = await fetchRates(config.pairs.map(p => p.toUpperCase()));
+    render(data);
+    err.hidden = true;
+    status.textContent = "Updated " + new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  } catch (e) {
+    err.textContent = e.message; err.hidden = false;
+    status.textContent = "Update failed";
+  }
+}
+
+document.getElementById("refresh").addEventListener("click", update);
+loadConfig().then(update);
+setInterval(update, REFRESH_MS);
+</script>
+</body>
+</html>
