@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Forex Ticker</title>
-<meta name="description" content="Live CAD/INR, USD/INR, CAD/USD and USD/CAD rates with trends, conversions and chart links.">
+<meta name="description" content="Live CAD/INR, USD/INR, CAD/USD and USD/CAD rates with trends, conversions, and statistical buy signals for converting INR.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -132,6 +132,94 @@
   .error { margin-top: 18px; padding: 12px 16px; border-radius: 16px; color: var(--down); }
   footer { margin-top: 30px; padding: 14px 18px; border-radius: 18px; color: var(--muted); font-size: 12px; }
   footer a { color: var(--link); }
+  /* Buy signals */
+  #signals { margin-top: 36px; }
+  .sig-title { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+  .sig-title h2 { margin: 0 0 4px; font-size: 22px; font-weight: 800; letter-spacing: -.01em; }
+  .sig-title p { margin: 0; max-width: 640px; }
+  .muted { color: var(--muted); } .small { font-size: 12px; }
+  .seg { display: inline-flex; padding: 4px; border-radius: 14px; background: var(--glass); border: 1px solid var(--glass-line);
+         backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+  .seg button { border: 0; background: transparent; padding: 6px 14px; border-radius: 10px; }
+  .seg button[aria-pressed="true"] { background: var(--glass-hi); color: var(--text); }
+  :root:not([data-theme="light"]) .seg button[aria-pressed="true"] { background: rgba(255,255,255,.22); }
+  .compare { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 18px; padding: 16px 20px; border-radius: 22px; margin-bottom: 22px; }
+  .cmp-item { display: flex; align-items: center; gap: 10px; }
+  .cmp-text { font-size: 14px; }
+  .sig-grid { display: grid; gap: 22px; }
+  .sig { position: relative; border-radius: 26px; padding: 22px; }
+  .sig::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+                 background: linear-gradient(135deg, rgba(255,255,255,.14), transparent 35%); }
+  .sig > * { position: relative; }
+  .sig-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 14px; }
+  .verdict-wrap { display: flex; align-items: center; gap: 12px; max-width: 420px; }
+  .gauge { --c: var(--muted); width: 64px; height: 64px; flex: none; border-radius: 50%; display: grid; place-items: center;
+           background: conic-gradient(var(--c) calc(var(--s) * 1%), rgba(127,127,127,.18) 0); }
+  .gauge > div { width: 50px; height: 50px; border-radius: 50%; display: grid; place-items: center; align-content: center;
+                 background: var(--bg); line-height: 1; }
+  .gauge b { font-size: 18px; font-weight: 800; } .gauge small { font-size: 9px; color: var(--muted); }
+  .gauge.strong { --c: #22e58f; } .gauge.good { --c: #8fe36b; } .gauge.neutral { --c: #f5c451; } .gauge.wait { --c: #ff6b7d; }
+  .verdict { font-weight: 800; font-size: 16px; }
+  .verdict.strong { color: var(--up); } .verdict.good { color: var(--up); } .verdict.neutral { color: var(--alert-line); } .verdict.wait { color: var(--down); }
+  .levels { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 16px; }
+  .lv { padding: 10px 12px; border-radius: 14px; background: var(--glass); border: 1px solid var(--glass-line); }
+  .lv span { display: block; font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: .03em; }
+  .lv b { display: block; font-size: 19px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .lv small { display: block; font-size: 11px; color: var(--muted); }
+  .lv.good { background: var(--up-bg); } .lv.great { background: color-mix(in srgb, var(--up) 22%, transparent); }
+  .lv.good b, .lv.great b { color: var(--up); }
+  .chart-wrap { position: relative; margin-top: 16px; }
+  .chart { width: 100%; }
+  svg.big { display: block; overflow: visible; touch-action: pan-y; }
+  svg.big .grid { stroke: var(--glass-line); stroke-width: 1; }
+  svg.big .grid.dash { stroke-dasharray: 3 4; }
+  svg.big .ax { fill: var(--muted); font-size: 10.5px; font-family: inherit; }
+  svg.big .band { fill: rgba(140, 160, 255, .14); stroke: none; }
+  svg.big .sma { fill: none; stroke: #f5c451; stroke-width: 1.4; stroke-dasharray: 5 4; opacity: .9; }
+  svg.big .kal { fill: none; stroke: #c39bff; stroke-width: 2; opacity: .95; }
+  svg.big .price { fill: none; stroke: var(--text); stroke-width: 1.6; stroke-linejoin: round; }
+  svg.big .zone { fill: rgba(34, 229, 143, .22); }
+  svg.big .zone2 { fill: rgba(143, 227, 107, .10); }
+  svg.big .lvl { stroke-width: 1.2; stroke-dasharray: 6 4; }
+  svg.big .lvl.good { stroke: #8fe36b; } svg.big .lvl.great { stroke: #22e58f; }
+  svg.big .lvl-t { font-size: 10.5px; font-weight: 700; font-family: inherit; }
+  svg.big .lvl-t.good { fill: #8fe36b; } svg.big .lvl-t.great { fill: #22e58f; }
+  svg.big .score { fill: none; stroke: #22e58f; stroke-width: 1.6; }
+  svg.big .now { fill: var(--text); stroke: var(--bg); stroke-width: 1.5; }
+  svg.big .now-halo { fill: color-mix(in srgb, var(--text) 25%, transparent); }
+  svg.big .cross { stroke: var(--muted); stroke-dasharray: 2 3; }
+  :root[data-theme="light"] svg.big .lvl-t.good, :root[data-theme="light"] svg.big .lvl-t.great { fill: #0b7a45; }
+  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) svg.big .lvl-t.good, :root:not([data-theme="dark"]) svg.big .lvl-t.great { fill: #0b7a45; }
+    :root:not([data-theme="dark"]) svg.big .lvl.good, :root:not([data-theme="dark"]) svg.big .lvl.great { stroke: #1f9d5c; }
+    :root:not([data-theme="dark"]) svg.big .score { stroke: #0b8a4f; } }
+  .tip { position: absolute; pointer-events: none; padding: 8px 10px; border-radius: 12px; font-size: 12px; line-height: 1.45;
+         background: color-mix(in srgb, var(--bg) 80%, transparent); border: 1px solid var(--glass-line);
+         backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); white-space: nowrap; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; font-size: 11.5px; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .sw { display: inline-block; width: 16px; height: 3px; border-radius: 2px; }
+  .sw.price { background: var(--text); } .sw.kal { background: #c39bff; }
+  .sw.sma { background: repeating-linear-gradient(90deg, #f5c451 0 4px, transparent 4px 7px); }
+  .sw.band { height: 10px; background: rgba(140,160,255,.3); } .sw.zone { height: 10px; background: rgba(34,229,143,.45); }
+  .sw.zone2 { height: 10px; background: rgba(143,227,107,.22); }
+  .explain { margin: 14px 0 0; font-size: 14px; }
+  .why { margin-top: 12px; }
+  .why summary { cursor: pointer; font-weight: 700; font-size: 14px; color: var(--link); }
+  .why table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+  .why th { text-align: left; font-weight: 600; color: var(--muted); font-size: 11.5px; padding: 6px 8px; }
+  .why td { padding: 8px; border-top: 1px solid var(--glass-line); vertical-align: top; }
+  .why td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .bar { display: inline-block; width: 46px; height: 6px; border-radius: 3px; background: rgba(127,127,127,.25); margin-right: 8px; vertical-align: middle; overflow: hidden; }
+  .bar span { display: block; height: 100%; background: var(--up); }
+  .disclaimer { margin-top: 22px; padding: 14px 18px; border-radius: 18px; font-size: 13px; color: var(--muted); border-color: var(--alert-line); }
+  .disclaimer b { color: var(--alert-line); }
+  @media (max-width: 700px) {
+    .levels { grid-template-columns: repeat(2, 1fr); }
+    .compare { grid-template-columns: 1fr 1fr; }
+    .cmp-text { grid-column: 1 / -1; grid-row: 2; }
+    .why th:nth-child(3), .why td:nth-child(3) { display: none; }
+    .sig { padding: 18px 16px; }
+  }
   .skeleton { height: 330px; border-radius: 26px; animation: shimmer 1.4s ease-in-out infinite; }
   @keyframes shimmer { 50% { opacity: .55; } }
   @media (max-width: 520px) {
@@ -161,15 +249,19 @@
     <div class="skeleton glass"></div><div class="skeleton glass"></div><div class="skeleton glass"></div><div class="skeleton glass"></div>
   </div>
   <div id="error" class="error glass" hidden></div>
+  <div id="signals"></div>
   <footer class="glass">
     Rates: <span id="source">–</span>. Refreshes every 5 minutes. Trends compare today's rate with
     European Central Bank closes 1 and 5 working days and 1 and 3 months ago; the line shows the last 3 months.
     Free rate sources update about once a working day, so numbers may not move between refreshes.
     Pairs and optional alert levels come from <a href="config.yaml">config.yaml</a>.
+    Buy-signal models are in <a href="models.js">models.js</a>.
   </footer>
 </main>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
+<script src="models.js"></script>
+<script src="analysis.js"></script>
 <script>
 const DEFAULT_CONFIG = {
   pairs: ["CAD/INR", "USD/INR", "CAD/USD", "USD/CAD"],
@@ -248,19 +340,21 @@ const isoDay = d => d.toISOString().slice(0, 10);
 const shiftMonths = (d, n) => { const x = new Date(d); const day = x.getUTCDate(); x.setUTCDate(1); x.setUTCMonth(x.getUTCMonth() - n);
   const last = new Date(Date.UTC(x.getUTCFullYear(), x.getUTCMonth() + 1, 0)).getUTCDate(); x.setUTCDate(Math.min(day, last)); return x; };
 
-// Daily ECB closes for ~100 days. A short range (always daily) plus a long range, merged.
+// About 2 years of daily ECB closes, fetched in 90-day chunks (so every chunk stays daily) and merged.
 async function loadHistory(pairs) {
   const today = new Date();
   const out = {};
+  const chunks = [];
+  for (let end = 0; end < 760; end += 90) chunks.push([end + 89, end]);
   for (const [b, qs] of Object.entries(groupByBase(pairs))) {
     const series = {};
-    for (const back of [14, 100]) {
-      const start = isoDay(new Date(today - back * 864e5));
-      const r = await fetch(`https://api.frankfurter.app/${start}..?from=${b}&to=${qs.join(",")}`);
+    const parts = await Promise.all(chunks.map(async ([from, to]) => {
+      const start = isoDay(new Date(today - from * 864e5)), end = isoDay(new Date(today - to * 864e5));
+      const r = await fetch(`https://api.frankfurter.app/${start}..${end}?from=${b}&to=${qs.join(",")}`);
       if (!r.ok) throw new Error(`history HTTP ${r.status}`);
-      const d = await r.json();
-      for (const [day, vals] of Object.entries(d.rates || {})) series[day] = { ...(series[day] || {}), ...vals };
-    }
+      return r.json();
+    }));
+    for (const d of parts) for (const [day, vals] of Object.entries(d.rates || {})) series[day] = { ...(series[day] || {}), ...vals };
     for (const q of qs) {
       out[`${b}/${q}`] = Object.keys(series).sort().filter(day => series[day][q] != null).map(day => [day, series[day][q]]);
     }
@@ -284,6 +378,9 @@ function trends(points, current) {
 
 function sparkline(points, current, id) {
   if (!points || points.length < 2) return "";
+  const cut = isoDay(shiftMonths(new Date(points[points.length - 1][0] + "T00:00:00Z"), 3));
+  points = points.filter(([d]) => d >= cut);
+  if (points.length < 2) return "";
   const vals = points.map(p => p[1]);
   const min = Math.min(...vals, current), max = Math.max(...vals, current);
   const W = 300, H = 64, pad = 4;
@@ -355,7 +452,10 @@ async function update() {
     const data = await fetchRates(pairs);
     const day = isoDay(new Date()) + "-" + new Date().getUTCHours();
     if (historyDay !== day) {
-      try { history = await loadHistory(pairs); historyDay = day; } catch (e) { console.warn("trends unavailable", e); }
+      try {
+        history = await loadHistory(pairs); historyDay = day;
+        if (window.FXSignals) window.FXSignals.render(history);
+      } catch (e) { console.warn("trends unavailable", e); }
     }
     lastData = data;
     render(data);
