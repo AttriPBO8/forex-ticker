@@ -57,6 +57,12 @@ providers:
   - frankfurter
   - open_er_api
 
+# Chart links shown next to each pair in the email. Pick any of:
+#   tradingview, google, xe, yahoo
+chart_links:
+  - tradingview
+  - google
+
 # Decimal places shown for each pair in emails.
 decimals:
   CAD/INR: 4
