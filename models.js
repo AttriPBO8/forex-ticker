@@ -122,9 +122,10 @@
   }
 
   // Combined 0-100 "buy attractiveness" score for each day. Higher = better time to buy.
-  // Weights: 1-year percentile 30, Bollinger %B 20, 50-day z-score 20, RSI 15, Kalman trend 15.
-  function buyScores(v) {
-    const pct = percentile(v, 252);
+  // Weights: percentile over the chosen horizon 30, Bollinger %B 20, 50-day z-score 20, RSI 15, Kalman trend 15.
+  // `horizon` (trading days) is how far back "cheap vs expensive" is judged: 126 = 6M, 252 = 1Y, 504 = 2Y.
+  function buyScores(v, horizon = 252) {
+    const pct = percentile(v, horizon);
     const bb = bollinger(v, 20, 2);
     const z = zscore(v, 50);
     const r = rsi(v, 14);
@@ -153,7 +154,7 @@
   }
 
   // Full analysis for one X/INR series: points = [[isoDate, rate], ...] sorted ascending.
-  function analyse(points) {
+  function analyse(points, horizon = 252) {
     const dates = points.map(p => p[0]);
     const v = points.map(p => p[1]);
     const n = v.length, last = n - 1;
@@ -161,16 +162,16 @@
     const s50 = sma(v, 50), s200 = sma(v, 200);
     const z = zscore(v, 50);
     const r = rsi(v, 14);
-    const pct1y = percentile(v, 252), pct3m = percentile(v, 63);
+    const pctH = percentile(v, horizon), pct3m = percentile(v, 63);
     const k = kalman(v);
     const h = holt(v);
-    const scores = buyScores(v);
-    const yr = v.slice(Math.max(0, n - 252));
+    const scores = buyScores(v, horizon);
+    const yr = v.slice(Math.max(0, n - horizon));
     const now = v[last];
     const sc = scores[last];
     const slopeDay = k.slope[last];
     return {
-      dates, values: v, bb, sma50: s50, sma200: s200, kalman: k.level, scores,
+      horizon, dates, values: v, bb, sma50: s50, sma200: s200, kalman: k.level, scores,
       now,
       score: sc ? sc.total : null,
       parts: sc ? sc.parts : null,
@@ -179,11 +180,11 @@
         great: quantile(yr, 0.10),
         good: quantile(yr, 0.25),
         median: quantile(yr, 0.50),
-        low1y: Math.min(...yr), high1y: Math.max(...yr),
+        lowH: Math.min(...yr), highH: Math.max(...yr),
         bbLower: bb.lower[last], bbUpper: bb.upper[last],
       },
       ind: {
-        pct1y: pct1y[last], pct3m: pct3m[last],
+        pctH: pctH[last], pct3m: pct3m[last],
         pctB: bb.pctB[last], z50: z[last], rsi14: r[last],
         sma50: s50[last], sma200: s200[last],
         kalmanLevel: k.level[last], kalmanSlope: slopeDay,

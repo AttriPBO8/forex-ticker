@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Forex Ticker</title>
-<meta name="description" content="Live CAD/INR, USD/INR, CAD/USD and USD/CAD rates with trends, conversions, and statistical buy signals for converting INR.">
+<meta name="description" content="Live CAD/INR, USD/INR, CAD/USD, USD/CAD and gold in INR, with trends, conversions, and statistical buy signals for converting INR.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -106,6 +106,7 @@
   .chip.CAD { background: linear-gradient(135deg, #ff4d5e, #c8102e); }
   .chip.USD { background: linear-gradient(135deg, #3a6df0, #1b3a8a); }
   .chip.INR { background: linear-gradient(135deg, #ff9933, #138808); }
+  .chip.XAU { background: linear-gradient(135deg, #ffe38a, #c8941e 55%, #8a6212); color: #3a2a00; font-size: 12px; }
   .pair small { display: block; color: var(--muted); font-weight: 500; font-size: 12px; }
   .rate { font-size: 34px; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; line-height: 1.1; text-align: right; }
   .rate small { display: block; font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: 0; }
@@ -117,7 +118,12 @@
   .conv span { color: var(--muted); white-space: nowrap; }
   .conv span.main { color: var(--text); }
   .trends { position: relative; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }
-  .trend { border-radius: 14px; padding: 8px 6px; text-align: center; background: var(--glass); border: 1px solid var(--glass-line); }
+  .trend { border-radius: 14px; padding: 8px 6px; text-align: center; background: var(--glass); border: 1px solid var(--glass-line);
+           font: inherit; color: inherit; cursor: pointer; transition: transform .15s, border-color .15s, box-shadow .15s; }
+  .trend:hover { transform: translateY(-1px); }
+  .trend[aria-pressed="true"] { border-color: var(--text); box-shadow: 0 0 0 1px var(--text) inset; }
+  .spark .base { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 4; }
+  .spark-empty { height: 64px; margin-top: 14px; display: grid; place-items: center; font-size: 12px; color: var(--muted); }
   .trend .lbl { display: block; font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: .08em; }
   .trend .val { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
   .trend.up { background: var(--up-bg); } .trend.up .val { color: var(--up); }
@@ -132,6 +138,30 @@
   .error { margin-top: 18px; padding: 12px 16px; border-radius: 16px; color: var(--down); }
   footer { margin-top: 30px; padding: 14px 18px; border-radius: 18px; color: var(--muted); font-size: 12px; }
   footer a { color: var(--link); }
+  /* Top summary */
+  #summary { margin-top: 22px; }
+  #summary:empty { display: none; }
+  .summary { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 14px 22px; padding: 16px 20px; border-radius: 24px; }
+  .sum-main { display: flex; align-items: center; gap: 14px; }
+  .sum-kicker { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .sum-head { font-size: 20px; font-weight: 800; letter-spacing: -.01em; }
+  .sum-list { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; }
+  .mini { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 16px; text-decoration: none; color: var(--text);
+          background: var(--glass); border: 1px solid var(--glass-line); transition: transform .15s, background .15s; }
+  .mini:hover { transform: translateY(-1px); background: var(--glass-hi); }
+  .mini .chip { width: 30px; height: 30px; font-size: 9px; }
+  .mini > span { display: flex; flex-direction: column; line-height: 1.25; font-size: 13px; }
+  .mini .verdict { font-size: 12px; } .mini small { font-size: 11px; color: var(--muted); }
+  .sum-link { grid-column: 1 / -1; justify-self: start; font-size: 13px; font-weight: 700; color: var(--link); text-decoration: none; }
+  .sum-link:hover { text-decoration: underline; }
+  .gauge.lg { width: 76px; height: 76px; } .gauge.lg > div { width: 60px; height: 60px; } .gauge.lg b { font-size: 22px; }
+  .seg-wrap { display: flex; align-items: center; gap: 8px; }
+  html { scroll-behavior: smooth; scroll-padding-top: 100px; }
+  @media (max-width: 760px) {
+    .summary { grid-template-columns: 1fr; }
+    .sum-list { justify-content: flex-start; }
+  }
+
   /* Buy signals */
   #signals { margin-top: 36px; }
   .sig-title { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
@@ -238,21 +268,23 @@
 <div class="backdrop" aria-hidden="true"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div><div class="grain"></div></div>
 <main>
   <header class="glass">
-    <div class="brand"><div class="logo">₹$</div><h1>Forex Ticker<small>CAD · USD · INR</small></h1></div>
+    <div class="brand"><div class="logo">₹$</div><h1>Forex Ticker<small>CAD · USD · INR · Gold</small></h1></div>
     <div class="status">
       <label class="amount">Amount <input id="amount" type="number" min="0" step="any" value="100"></label>
       <span class="live"><span class="dot"></span><span id="status">Loading…</span></span>
       <button id="refresh" type="button">Refresh</button>
     </div>
   </header>
+  <div id="summary"></div>
   <div id="cards" class="grid" aria-live="polite">
     <div class="skeleton glass"></div><div class="skeleton glass"></div><div class="skeleton glass"></div><div class="skeleton glass"></div>
   </div>
   <div id="error" class="error glass" hidden></div>
   <div id="signals"></div>
   <footer class="glass">
-    Rates: <span id="source">–</span>. Refreshes every 5 minutes. Trends compare today's rate with
-    European Central Bank closes 1 and 5 working days and 1 and 3 months ago; the line shows the last 3 months.
+    Rates: <span id="source">–</span>. Gold: fawazahmed0/currency-api daily snapshots (international spot, converted to INR per 10 g).
+    Refreshes every 5 minutes. Trends compare today's price with the close 1 and 5 working days and 1 and 3 months ago;
+    tap a trend tile to see that window on the card's chart.
     Free rate sources update about once a working day, so numbers may not move between refreshes.
     Pairs and optional alert levels come from <a href="config.yaml">config.yaml</a>.
     Buy-signal models are in <a href="models.js">models.js</a>.
@@ -373,78 +405,162 @@ async function loadHistory(pairs) {
   return out;
 }
 
+// ---------------------------------------------------------------- gold (XAU) in INR
+// Daily snapshots from fawazahmed0/currency-api (free, no key, CORS enabled), one file per day.
+// Past days never change, so each one is cached in this browser after the first visit.
+const OZ_TO_10G = 10 / 31.1034768;
+const GOLD_URLS = [
+  d => `https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@${d}/v1/currencies/xau.min.json`,
+  d => `https://${d}.currency-api.pages.dev/v1/currencies/xau.min.json`,
+];
+let gold = { now: null, date: "", points: [] };   // INR per 10 g
+let goldLoadedDays = 0;
+
+async function goldDay(d, cache = true) {
+  const key = "xauinr:" + d;
+  if (cache) { try { const c = localStorage.getItem(key); if (c) return +c; } catch (e) {} }
+  for (const u of GOLD_URLS) {
+    try {
+      const r = await fetch(u(d));
+      if (!r.ok) continue;
+      const j = await r.json();
+      const v = j && j.xau && j.xau.inr;
+      if (v) { if (cache) { try { localStorage.setItem(key, String(v)); } catch (e) {} } return +v; }
+    } catch (e) {}
+  }
+  return null;
+}
+
+async function loadGold(daysBack) {
+  const today = new Date();
+  const days = [];
+  for (let k = daysBack; k >= 1; k--) {
+    const d = new Date(today - k * 864e5);
+    if (d.getUTCDay() === 0 || d.getUTCDay() === 6) continue;   // markets closed: keep it in step with FX days
+    days.push(isoDay(d));
+  }
+  const vals = {};
+  let next = 0;
+  const worker = async () => { while (next < days.length) { const d = days[next++]; const v = await goldDay(d, true); if (v) vals[d] = v; } };
+  await Promise.all(Array.from({ length: 16 }, worker));
+  // latest (not cached: today's file can change)
+  const latest = await goldDay("latest", false);
+  const pts = Object.keys(vals).sort().map(d => [d, vals[d] * OZ_TO_10G]);
+  if (latest) {
+    const todayIso = isoDay(today);
+    if (!pts.length || pts[pts.length - 1][0] < todayIso) pts.push([todayIso, latest * OZ_TO_10G]);
+  }
+  if (pts.length) gold = { now: pts[pts.length - 1][1], date: pts[pts.length - 1][0], points: pts };
+  goldLoadedDays = daysBack;
+}
+
+// ---------------------------------------------------------------- cards
 const PERIODS = [["1D", "points", 1], ["5D", "points", 5], ["1M", "months", 1], ["3M", "months", 3]];
+const cardRange = {};   // key -> "1D" | "5D" | "1M" | "3M" (which window the card's chart shows)
+
+// Index of the comparison point for a period (the close 1 or 5 days back, or the last close on/before 1 or 3 months back)
+function baseIndex(points, label) {
+  const [, kind, n] = PERIODS.find(p => p[0] === label);
+  if (!points || !points.length) return -1;
+  if (kind === "points") return points.length > n ? points.length - 1 - n : -1;
+  const target = isoDay(shiftMonths(new Date(points[points.length - 1][0] + "T00:00:00Z"), n));
+  let idx = -1;
+  for (let i = 0; i < points.length; i++) if (points[i][0] <= target) idx = i;
+  return idx;
+}
+
 function trends(points, current) {
   const res = {};
-  if (!points || !points.length) return res;
-  const lastDate = new Date(points[points.length - 1][0] + "T00:00:00Z");
-  for (const [label, kind, n] of PERIODS) {
-    let old = null;
-    if (kind === "points") { if (points.length > n) old = points[points.length - 1 - n][1]; }
-    else { const target = isoDay(shiftMonths(lastDate, n)); const older = points.filter(([d]) => d <= target); if (older.length) old = older[older.length - 1][1]; }
-    res[label] = old ? (current - old) / old * 100 : null;
+  for (const [label] of PERIODS) {
+    const i = baseIndex(points, label);
+    res[label] = i < 0 ? null : (current - points[i][1]) / points[i][1] * 100;
   }
   return res;
 }
 
-function sparkline(points, current, id) {
-  if (!points || points.length < 2) return "";
-  const cut = isoDay(shiftMonths(new Date(points[points.length - 1][0] + "T00:00:00Z"), 3));
-  points = points.filter(([d]) => d >= cut);
-  if (points.length < 2) return "";
-  const vals = points.map(p => p[1]);
-  const min = Math.min(...vals, current), max = Math.max(...vals, current);
-  const W = 300, H = 64, pad = 4;
-  const xy = vals.map((v, i) => [pad + i * (W - 2 * pad) / (vals.length - 1), H - pad - (max === min ? 0.5 : (v - min) / (max - min)) * (H - 2 * pad)]);
-  const rising = vals[vals.length - 1] >= vals[0];
-  const color = rising ? "var(--up)" : "var(--down)";
-  const d = xy.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join("");
-  const gid = "g" + String(id).replace(/\W/g, "");
-  const area = `${d}L${xy[xy.length - 1][0].toFixed(1)},${H}L${xy[0][0].toFixed(1)},${H}Z`;
-  return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="3 month trend">
+// Chart of exactly the window a trend tile describes: from its comparison close to the latest price.
+function sparkline(points, current, id, label, fmtV) {
+  const i = baseIndex(points, label);
+  if (i < 0) return `<div class="spark-empty">Not enough history for ${label}</div>`;
+  const win = points.slice(i).map(p => p.slice());
+  if (win.length && current != null) win[win.length - 1][1] = current;
+  if (win.length < 2) return "";
+  const vals = win.map(p => p[1]);
+  const base = vals[0];
+  const min = Math.min(...vals), max = Math.max(...vals);
+  const W = 300, H = 64, pad = 5;
+  const X = k => pad + k * (W - 2 * pad) / (vals.length - 1);
+  const Y = v => H - pad - (max === min ? 0.5 : (v - min) / (max - min)) * (H - 2 * pad);
+  const up = vals[vals.length - 1] >= base;
+  const color = up ? "var(--up)" : "var(--down)";
+  const d = vals.map((v, k) => `${k ? "L" : "M"}${X(k).toFixed(1)},${Y(v).toFixed(1)}`).join("");
+  const gid = "g" + String(id).replace(/\W/g, "") + label;
+  const area = `${d}L${X(vals.length - 1).toFixed(1)},${H}L${X(0).toFixed(1)},${H}Z`;
+  const dots = vals.length <= 8 ? vals.map((v, k) => `<circle cx="${X(k).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="2.6" style="fill:${color}"/>`).join("") : "";
+  const chg = vals[vals.length - 1] - base, pct = chg / base * 100;
+  const dt = s => new Date(s + "T00:00:00Z").toLocaleDateString(undefined, { day: "numeric", month: "short", timeZone: "UTC" });
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${label} chart">
     <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:${color};stop-opacity:.35"/><stop offset="1" style="stop-color:${color};stop-opacity:0"/></linearGradient></defs>
     <path d="${area}" fill="url(#${gid})" stroke="none"/>
-    <path d="${d}" fill="none" style="stroke:${color}" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>
-    <div class="spark-cap"><span>${points[0][0]}</span><span class="range">3-month range ${min.toFixed(4)} to ${max.toFixed(4)}</span><span>${points[points.length - 1][0]}</span></div>`;
+    <line x1="${pad}" x2="${W - pad}" y1="${Y(base).toFixed(1)}" y2="${Y(base).toFixed(1)}" class="base" vector-effect="non-scaling-stroke"/>
+    <path d="${d}" fill="none" style="stroke:${color}" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>${dots}</svg>
+    <div class="spark-cap"><span>${dt(win[0][0])}</span><span class="range">${label}: ${chg >= 0 ? "+" : "−"}${fmtV(Math.abs(chg))} (${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%)</span><span>${dt(win[win.length - 1][0])}</span></div>`;
 }
 
 const money = x => Math.abs(x) >= 1 ? x.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : x.toFixed(4);
+const rupees = x => "₹" + Math.round(x).toLocaleString("en-IN");
+
+function instruments(data) {
+  const dec = config.decimals || {};
+  const list = config.pairs.map(p => p.toUpperCase()).map(p => {
+    const [b, q] = split(p);
+    const d = dec[p] ?? 4;
+    return { key: p, b, q, rate: data.rates[p], points: history[p], title: `${b} → ${q}`,
+      sub: `${NAMES[b] || b} to ${NAMES[q] || q}`, unitLine: `1 ${b} in ${q}`, fmtRate: x => x.toFixed(d), fmtDelta: x => x.toFixed(d),
+      conv: amt => `<span class="main">${amt.toLocaleString()} ${b} = <b>${money(amt * data.rates[p])} ${q}</b></span>
+        <span>${amt.toLocaleString()} ${q} = ${money(amt / data.rates[p])} ${b}</span>`, links: true };
+  });
+  if (config.gold !== false && gold.now) {
+    list.push({ key: "XAU/INR", b: "XAU", q: "INR", rate: gold.now, points: gold.points, title: "Gold → INR",
+      sub: "International spot price, before duty and GST", unitLine: "per 10 grams", fmtRate: rupees, fmtDelta: x => "₹" + Math.round(x).toLocaleString("en-IN"),
+      conv: () => `<span class="main">1 g = <b>${rupees(gold.now / 10)}</b> · 1 oz = <b>${rupees(gold.now / OZ_TO_10G)}</b></span>
+        <span>₹1,00,000 = ${(100000 / gold.now * 10).toFixed(2)} g</span>`,
+      linkList: [["TradingView", "https://www.tradingview.com/chart/?symbol=FX_IDC:XAUINR"], ["Google Finance", "https://www.google.com/finance/quote/XAU-INR"]] });
+  }
+  return list;
+}
 
 function render(data) {
-  const pairs = config.pairs.map(p => p.toUpperCase());
-  const dec = config.decimals || {};
   const sites = config.chart_links || [];
   const rules = config.rules || [];
-  const html = pairs.map((p, i) => {
-    const [b, q] = split(p);
-    const rate = data.rates[p];
-    const d = dec[p] ?? 4;
-    const tr = trends(history[p], rate);
+  const amt = Number(document.getElementById("amount").value) || Number(config.conversion_amount) || 100;
+  const html = instruments(data).map((it, i) => {
+    const sel = cardRange[it.key] || "3M";
+    const tr = trends(it.points, it.rate);
     const trendHtml = PERIODS.map(([lbl]) => {
       const v = tr[lbl];
       const cls = v == null ? "na" : v > 0 ? "up" : v < 0 ? "down" : "";
-      return `<div class="trend ${cls}"><span class="lbl">${lbl}</span><span class="val">${v == null ? "n/a" : (v > 0 ? "+" : "") + v.toFixed(2) + "%"}</span></div>`;
+      return `<button type="button" class="trend ${cls}" data-key="${it.key}" data-range="${lbl}" aria-pressed="${lbl === sel}" title="Show the ${lbl} chart">
+        <span class="lbl">${lbl}</span><span class="val">${v == null ? "n/a" : (v > 0 ? "+" : "") + v.toFixed(2) + "%"}</span></button>`;
     }).join("");
-    const amt = Number(document.getElementById("amount").value) || Number(config.conversion_amount) || 100;
-    const convHtml = `<div class="conv"><span class="main">${amt.toLocaleString()} ${b} = <b>${money(amt * rate)} ${q}</b></span>
-      <span>${amt.toLocaleString()} ${q} = ${money(amt / rate)} ${b}</span></div>`;
-    const myRules = rules.filter(r => r.pair.toUpperCase() === p && OPS[r.op]);
-    const hits = myRules.filter(r => OPS[r.op](rate, Number(r.value)));
+    const myRules = rules.filter(r => r.pair.toUpperCase() === it.key && OPS[r.op]);
+    const hits = myRules.filter(r => OPS[r.op](it.rate, Number(r.value)));
     const rulesHtml = myRules.length ? `<div class="rules">Alert levels: ${myRules.map(r => {
         const hit = hits.includes(r);
         return `<span class="${hit ? "hit" : ""}">${esc(r.op)} ${esc(r.value)}${hit ? " (triggered" + (r.note ? ": " + esc(r.note) : "") + ")" : ""}</span>`;
       }).join(" · ")}</div>` : "";
-    const links = sites.filter(s => CHART_SITES[s]).map(s =>
-      `<a href="${CHART_SITES[s][1](b, q)}" target="_blank" rel="noopener">${CHART_SITES[s][0]} ↗</a>`).join("");
+    const linkPairs = it.linkList || sites.filter(s => CHART_SITES[s]).map(s => [CHART_SITES[s][0], CHART_SITES[s][1](it.b, it.q)]);
+    const links = linkPairs.map(([n, u]) => `<a href="${u}" target="_blank" rel="noopener">${n} ↗</a>`).join("");
+    const chipTxt = c => c === "XAU" ? "Au" : c;
     return `<section class="card glass${hits.length ? " alert" : ""}${firstRender ? " enter" : ""}" style="--i:${i}">
       <div class="row">
-        <div class="pair"><span class="chips"><span class="chip ${b}">${b}</span><span class="chip ${q}">${q}</span></span>
-          <span>${b} → ${q}<small>${esc(NAMES[b] || b)} to ${esc(NAMES[q] || q)}</small></span></div>
-        <div class="rate">${rate.toFixed(d)}<small>1 ${b} in ${q}</small></div>
+        <div class="pair"><span class="chips"><span class="chip ${it.b}">${chipTxt(it.b)}</span><span class="chip ${it.q}">${it.q}</span></span>
+          <span>${it.title}<small>${esc(it.sub)}</small></span></div>
+        <div class="rate">${it.fmtRate(it.rate)}<small>${it.unitLine}</small></div>
       </div>
-      ${convHtml}
-      <div class="trends">${trendHtml}</div>
-      ${sparkline(history[p], rate, p)}
+      <div class="conv">${it.conv(amt)}</div>
+      <div class="trends" role="group" aria-label="Chart window">${trendHtml}</div>
+      ${sparkline(it.points, it.rate, it.key, sel, it.fmtDelta)}
       ${rulesHtml}
       <div class="links">${links}</div>
     </section>`;
@@ -454,6 +570,19 @@ function render(data) {
   document.getElementById("source").textContent = `${data.source}, as of ${data.asOf}`;
 }
 
+// Clicking a 1D / 5D / 1M / 3M tile switches that card's chart window
+document.getElementById("cards").addEventListener("click", e => {
+  const b = e.target.closest("button.trend");
+  if (!b || !lastData) return;
+  cardRange[b.dataset.key] = b.dataset.range;
+  render(lastData);
+});
+
+function renderSignals() {
+  if (!window.FXSignals) return;
+  window.FXSignals.render({ "CAD/INR": history["CAD/INR"], "USD/INR": history["USD/INR"], "XAU/INR": gold.points });
+}
+
 async function update() {
   const status = document.getElementById("status");
   const err = document.getElementById("error");
@@ -461,11 +590,11 @@ async function update() {
   try {
     const pairs = config.pairs.map(p => p.toUpperCase());
     const data = await fetchRates(pairs);
-    const day = isoDay(new Date()) + "-" + new Date().getUTCHours();
-    if (historyDay !== day) {
+    const hour = isoDay(new Date()) + "-" + new Date().getUTCHours();
+    const fresh = historyDay !== hour;
+    if (fresh) {
       try {
-        history = await loadHistory(pairs); historyDay = day;
-        if (window.FXSignals) window.FXSignals.render(history);
+        history = await loadHistory(pairs); historyDay = hour;
       } catch (e) {
         console.warn("trends unavailable", e);
         document.getElementById("signals").innerHTML =
@@ -473,16 +602,24 @@ async function update() {
       }
     }
     lastData = data;
+    // Gold: quick 100 days first so the card appears fast, then the full 2+ years for the signals
+    if (fresh && config.gold !== false) {
+      try { if (goldLoadedDays < 100) await loadGold(110); } catch (e) { console.warn("gold unavailable", e); }
+    }
     render(data);
+    if (fresh) renderSignals();
     err.hidden = true;
     status.textContent = "Updated " + new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    if (fresh && config.gold !== false) {
+      loadGold(800).then(() => { if (lastData) render(lastData); renderSignals(); }).catch(e => console.warn("gold history", e));
+    }
   } catch (e) {
     err.textContent = e.message; err.hidden = false;
     status.textContent = "Update failed";
   }
 }
 
-document.getElementById("refresh").addEventListener("click", update);
+document.getElementById("refresh").addEventListener("click", () => { historyDay = ""; update(); });
 document.getElementById("amount").addEventListener("input", () => { if (lastData) render(lastData); });
 loadConfig().then(() => {
   const a = document.getElementById("amount");

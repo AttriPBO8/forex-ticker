@@ -1,24 +1,27 @@
-// Buy-signal section: runs FXModels on X/INR history and draws the charts and explanations.
+// Buy-signal section: runs FXModels on X/INR history and draws the summary, charts and explanations.
 (function () {
   "use strict";
   const M = window.FXModels;
   const NS = "http://www.w3.org/2000/svg";
   const fmt = (x, d = 2) => x == null || isNaN(x) ? "n/a" : x.toFixed(d);
-  const inr = x => "₹" + Math.round(x).toLocaleString("en-IN");
-  const RANGES = { "6M": 126, "1Y": 252, "2Y": 520 };
+  // Prices: 2 decimals for currencies, whole rupees (Indian grouping) for gold
+  const px = x => x == null || isNaN(x) ? "n/a" : Math.abs(x) >= 1000 ? Math.round(x).toLocaleString("en-IN") : x.toFixed(2);
+  // Horizon = how far back "cheap vs expensive" is judged, and how much the chart shows.
+  const RANGES = { "6M": [126, "6 months"], "1Y": [252, "1 year"], "2Y": [504, "2 years"] };
   let range = "1Y";
   let lastHistory = null;
-  const NAMES = { CAD: "Canadian Dollar", USD: "US Dollar" };
+  const INFO = {
+    "CAD/INR": { code: "CAD", title: "Buy CAD with INR", sub: "Canadian Dollar price in rupees, lower is better", unit: "CAD" },
+    "USD/INR": { code: "USD", title: "Buy USD with INR", sub: "US Dollar price in rupees, lower is better", unit: "USD" },
+    "XAU/INR": { code: "XAU", title: "Buy gold with INR", sub: "Price of 10 g in rupees (international spot, before duty and GST), lower is better", unit: "g", perUnit: 10 },
+  };
   const INR_AMOUNT = 100000;
 
-  function verdictClass(score) { return M.verdict(score).key; }
-
-  function readings(a) {
+  function readings(a, hName) {
     const i = a.ind, p = a.parts;
-    const pctTxt = v => `${Math.round(v * 100)}%`;
     return [
-      ["1-year percentile", pctTxt(i.pct1y),
-        i.pct1y <= 0.25 ? "Cheaper than 3 in 4 days of the past year" : i.pct1y >= 0.75 ? "Dearer than 3 in 4 days of the past year" : "Middle of the past year's range",
+      [`Percentile over ${hName}`, `${Math.round(i.pctH * 100)}%`,
+        i.pctH <= 0.25 ? `Cheaper than 3 in 4 days of the past ${hName}` : i.pctH >= 0.75 ? `Dearer than 3 in 4 days of the past ${hName}` : `Middle of the past ${hName}'s range`,
         p.percentile, 30],
       ["Bollinger %B (20-day, 2σ)", fmt(i.pctB),
         i.pctB <= 0 ? "Below the lower band: unusually cheap short term" : i.pctB < 0.2 ? "Near the lower band: cheap short term" : i.pctB > 0.8 ? "Near the upper band: expensive short term" : "Inside the bands",
@@ -27,49 +30,49 @@
         i.z50 <= -1.5 ? "Far below its 50-day average" : i.z50 < -0.5 ? "Below its 50-day average" : i.z50 > 0.5 ? "Above its 50-day average" : "Close to its 50-day average",
         p.zscore, 20],
       ["RSI (14-day)", fmt(i.rsi14, 0),
-        i.rsi14 < 30 ? "Oversold: the pair has fallen fast, bounce risk" : i.rsi14 < 45 ? "Weak momentum (falling)" : i.rsi14 > 70 ? "Overbought: rose fast" : "Neutral momentum",
+        i.rsi14 < 30 ? "Oversold: the price has fallen fast, bounce risk" : i.rsi14 < 45 ? "Weak momentum (falling)" : i.rsi14 > 70 ? "Overbought: rose fast" : "Neutral momentum",
         p.rsi, 15],
-      ["Kalman trend", `${i.kalmanSlope >= 0 ? "+" : ""}${fmt(i.kalmanSlope * 21, 3)} ₹/month`,
-        i.kalmanSlope > 0 ? "Rising: waiting may cost more" : "Falling: waiting may get a better rate",
+      ["Kalman trend", `${i.kalmanSlope >= 0 ? "+" : "−"}₹${px(Math.abs(i.kalmanSlope * 21))}/month`,
+        i.kalmanSlope > 0 ? "Rising: waiting may cost more" : "Falling: waiting may get a better price",
         p.trend, 15],
     ];
   }
 
-  function gauge(score) {
-    const cls = verdictClass(score);
-    return `<div class="gauge ${cls}" style="--s:${score.toFixed(1)}"><div><b>${Math.round(score)}</b><small>/100</small></div></div>`;
+  function gauge(score, size = "") {
+    return `<div class="gauge ${M.verdict(score).key} ${size}" style="--s:${score.toFixed(1)}"><div><b>${Math.round(score)}</b><small>/100</small></div></div>`;
   }
+  const chip = code => `<span class="chip ${code}">${code === "XAU" ? "Au" : code}</span>`;
 
-  function panel(pair, a) {
-    const [b] = pair.split("/");
-    const v = a.verdict, L = a.levels, i = a.ind;
-    const buysNow = INR_AMOUNT / a.now, buysGood = INR_AMOUNT / L.good;
-    const rows = readings(a).map(([name, val, txt, pts, max]) => `
+  function panel(pair, a, hName) {
+    const info = INFO[pair], v = a.verdict, L = a.levels, i = a.ind;
+    const per = info.perUnit || 1;
+    const buysNow = INR_AMOUNT / a.now * per, buysGood = INR_AMOUNT / L.good * per;
+    const d = info.unit === "g" ? 2 : 2;
+    const rows = readings(a, hName).map(([name, val, txt, pts, max]) => `
       <tr><td>${name}</td><td class="num">${val}</td><td>${txt}</td>
       <td class="num"><span class="bar"><span style="width:${(pts / max * 100).toFixed(0)}%"></span></span>${pts.toFixed(1)}/${max}</td></tr>`).join("");
     const fc = i.holt.forecast, fcDelta = fc - a.now;
-    return `<section class="sig glass" data-pair="${pair}">
+    const id = "sig-" + info.code.toLowerCase();
+    return `<section class="sig glass" id="${id}" data-pair="${pair}">
       <div class="sig-head">
-        <div>
-          <div class="pair"><span class="chips"><span class="chip ${b}">${b}</span><span class="chip INR">INR</span></span>
-            <span>Buy ${b} with INR<small>${NAMES[b]} price in rupees, lower is better</small></span></div>
-        </div>
+        <div class="pair"><span class="chips">${chip(info.code)}${chip("INR")}</span>
+          <span>${info.title}<small>${info.sub}</small></span></div>
         <div class="verdict-wrap">${gauge(a.score)}<div><div class="verdict ${v.key}">${v.label}</div><div class="muted small">${v.tip}</div></div></div>
       </div>
       <div class="levels">
-        <div class="lv"><span>Now</span><b>₹${fmt(a.now, 2)}</b><small>${Math.round(i.pct1y * 100)}th percentile of 1 year</small></div>
-        <div class="lv good"><span>Good buy at or below</span><b>₹${fmt(L.good, 2)}</b><small>cheapest 25% of the past year</small></div>
-        <div class="lv great"><span>Great buy at or below</span><b>₹${fmt(L.great, 2)}</b><small>cheapest 10% of the past year</small></div>
-        <div class="lv"><span>5-day forecast (Holt)</span><b>₹${fmt(fc, 2)}</b><small>${fcDelta >= 0 ? "+" : ""}${fmt(fcDelta, 2)} vs now, trend only</small></div>
+        <div class="lv"><span>Now</span><b>₹${px(a.now)}</b><small>${Math.round(i.pctH * 100)}th percentile of ${hName}</small></div>
+        <div class="lv good"><span>Good buy at or below</span><b>₹${px(L.good)}</b><small>cheapest 25% of the past ${hName}</small></div>
+        <div class="lv great"><span>Great buy at or below</span><b>₹${px(L.great)}</b><small>cheapest 10% of the past ${hName}</small></div>
+        <div class="lv"><span>5-day forecast (Holt)</span><b>₹${px(fc)}</b><small>${fcDelta >= 0 ? "+" : "−"}${px(Math.abs(fcDelta))} vs now, trend only</small></div>
       </div>
       <div class="chart-wrap"><div class="chart" data-pair="${pair}"></div><div class="tip" hidden></div></div>
       <div class="legend">
-        <span><i class="sw price"></i>Rate</span><span><i class="sw kal"></i>Kalman trend</span><span><i class="sw sma"></i>50-day average</span>
+        <span><i class="sw price"></i>Price</span><span><i class="sw kal"></i>Kalman trend</span><span><i class="sw sma"></i>50-day average</span>
         <span><i class="sw band"></i>Bollinger band</span><span><i class="sw zone"></i>Strong buy zone (score ≥ 70)</span><span><i class="sw zone2"></i>Good (55 to 70)</span>
       </div>
-      <p class="explain">${INR_AMOUNT.toLocaleString("en-IN")} INR buys <b>${fmt(buysNow, 2)} ${b}</b> today.
-        At the good-buy level it would buy ${fmt(buysGood, 2)} ${b} (${buysGood >= buysNow ? "+" : ""}${fmt(buysGood - buysNow, 2)}).
-        Past year: low ₹${fmt(L.low1y, 2)}, median ₹${fmt(L.median, 2)}, high ₹${fmt(L.high1y, 2)}.</p>
+      <p class="explain">₹${INR_AMOUNT.toLocaleString("en-IN")} buys <b>${fmt(buysNow, d)} ${info.unit}</b> today.
+        At the good-buy level it would buy ${fmt(buysGood, d)} ${info.unit} (${buysGood >= buysNow ? "+" : ""}${fmt(buysGood - buysNow, d)}).
+        Past ${hName}: low ₹${px(L.lowH)}, median ₹${px(L.median)}, high ₹${px(L.highH)}.</p>
       <details class="why"><summary>Why this score? The numbers behind it</summary>
         <table><thead><tr><th>Model</th><th>Value</th><th>Reading</th><th>Points</th></tr></thead><tbody>${rows}</tbody></table>
       </details>
@@ -86,9 +89,9 @@
   function drawChart(box, a) {
     box.innerHTML = "";
     const W = Math.max(280, box.clientWidth), small = W < 520;
-    const H1 = small ? 210 : 270, gap = 18, H2 = small ? 60 : 72, padL = 8, padR = small ? 46 : 58, padT = 10;
+    const H1 = small ? 210 : 270, gap = 18, H2 = small ? 60 : 72, padL = 8, padR = small ? 52 : 64, padT = 10;
     const H = padT + H1 + gap + H2 + 22;
-    const n = a.values.length, show = Math.min(RANGES[range], n), s0 = n - show;
+    const n = a.values.length, show = Math.min(a.horizon, n), s0 = n - show;
     const idx = [...Array(show).keys()].map(k => s0 + k);
     const vals = idx.map(i => a.values[i]);
     const lows = idx.map(i => a.bb.lower[i]).filter(x => x != null), highs = idx.map(i => a.bb.upper[i]).filter(x => x != null);
@@ -98,9 +101,8 @@
     const Y = v => padT + (hi - v) / (hi - lo) * H1;
     const Y2 = s => padT + H1 + gap + (100 - s) / 100 * H2;
     const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, width: W, height: H, class: "big", role: "img",
-      "aria-label": `${range} chart of ${a.pair} with buy zones` }, box);
+      "aria-label": `Chart of ${a.pair} over the chosen horizon, with buy zones` }, box);
 
-    // buy zones (merge consecutive days)
     const zones = (min, max, cls) => {
       let start = null;
       for (let k = 0; k <= show; k++) {
@@ -117,13 +119,11 @@
     };
     zones(55, 70, "zone2"); zones(70, 101, "zone");
 
-    // grid + y labels
     for (let t = 0; t <= 4; t++) {
       const v = lo + (hi - lo) * t / 4, y = Y(v);
       el("line", { x1: padL, x2: W - padR, y1: y, y2: y, class: "grid" }, svg);
-      el("text", { x: W - padR + 6, y: y + 4, class: "ax" }, svg).textContent = v.toFixed(2);
+      el("text", { x: W - padR + 6, y: y + 4, class: "ax" }, svg).textContent = px(v);
     }
-    // month labels
     let lastM = "";
     const every = show > 300 ? 3 : show > 150 ? 2 : 1;
     idx.forEach((i, k) => {
@@ -138,7 +138,6 @@
       }
     });
 
-    // Bollinger band
     const bandPts = idx.map((i, k) => [k, a.bb.upper[i], a.bb.lower[i]]).filter(p => p[1] != null);
     if (bandPts.length > 1) {
       const top = bandPts.map(([k, u]) => `${X(k)},${Y(u)}`).join(" L");
@@ -151,27 +150,23 @@
     };
     line(a.sma50, "sma"); line(a.kalman, "kal"); line(a.values, "price");
 
-    // target levels
     [["good", a.levels.good, "Good"], ["great", a.levels.great, "Great"]].forEach(([cls, v, lbl]) => {
       if (v < lo || v > hi) return;
       el("line", { x1: padL, x2: W - padR, y1: Y(v), y2: Y(v), class: "lvl " + cls }, svg);
-      el("text", { x: padL + 4, y: Y(v) - 4, class: "lvl-t " + cls }, svg).textContent = `${lbl} ≤ ${v.toFixed(2)}`;
+      el("text", { x: padL + 4, y: Y(v) - 4, class: "lvl-t " + cls }, svg).textContent = `${lbl} ≤ ${px(v)}`;
     });
 
-    // current point
     const lastK = show - 1;
     el("circle", { cx: X(lastK), cy: Y(a.now), r: 7, class: "now-halo" }, svg);
     el("circle", { cx: X(lastK), cy: Y(a.now), r: 3.6, class: "now" }, svg);
 
-    // score panel
     el("text", { x: padL, y: padT + H1 + gap - 4, class: "ax" }, svg).textContent = "Buy score (0 to 100)";
     [55, 70].forEach(s => el("line", { x1: padL, x2: W - padR, y1: Y2(s), y2: Y2(s), class: "grid dash" }, svg));
-    el("text", { x: W - padR + 6, y: Y2(70) + 4, class: "ax" }, svg).textContent = "70";
-    el("text", { x: W - padR + 6, y: Y2(55) + 4, class: "ax" }, svg).textContent = "55";
+    el("text", { x: W - padR + 6, y: Y2(70) + 2, class: "ax" }, svg).textContent = "70";
+    el("text", { x: W - padR + 6, y: Y2(55) + 10, class: "ax" }, svg).textContent = "55";
     const sp = idx.map((i, k) => [k, a.scores[i] && a.scores[i].total]).filter(p => p[1] != null);
     if (sp.length > 1) el("path", { d: "M" + sp.map(([k, s]) => `${X(k).toFixed(1)},${Y2(s).toFixed(1)}`).join(" L"), class: "score" }, svg);
 
-    // hover
     const cross = el("line", { y1: padT, y2: padT + H1 + gap + H2, class: "cross", visibility: "hidden" }, svg);
     const dot = el("circle", { r: 4, class: "now", visibility: "hidden" }, svg);
     const tip = box.parentElement.querySelector(".tip");
@@ -186,7 +181,7 @@
       dot.setAttribute("cx", X(k)); dot.setAttribute("cy", Y(a.values[i])); dot.setAttribute("visibility", "visible");
       tip.hidden = false;
       tip.innerHTML = `<b>${new Date(a.dates[i] + "T00:00:00Z").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })}</b><br>
-        Rate ₹${a.values[i].toFixed(3)}<br>${s ? `Score ${Math.round(s.total)}: ${M.verdict(s.total).label}` : "Score: not enough history"}`;
+        Price ₹${px(a.values[i])}<br>${s ? `Score ${Math.round(s.total)}: ${M.verdict(s.total).label}` : "Score: not enough history"}`;
       const tx = X(k) + 14, tw = tip.offsetWidth;
       tip.style.left = (tx + tw > W ? X(k) - tw - 14 : tx) + "px";
       tip.style.top = Math.max(0, Y(a.values[i]) - 30) + "px";
@@ -197,44 +192,63 @@
     hit.addEventListener("pointerleave", leave);
   }
 
-  function compareLine(res) {
-    const [c, u] = [res["CAD/INR"], res["USD/INR"]];
-    if (!c || !u || c.score == null || u.score == null) return "";
-    const better = c.score >= u.score ? ["CAD", c, "USD", u] : ["USD", u, "CAD", c];
-    const diff = Math.abs(c.score - u.score);
-    return `<div class="compare glass">
-      <div class="cmp-item">${gauge(c.score)}<div><b>CAD</b><div class="verdict ${c.verdict.key}">${c.verdict.label}</div></div></div>
-      <div class="cmp-text">${diff < 5
-        ? `CAD and USD are about equally priced versus their own history right now (scores ${Math.round(c.score)} and ${Math.round(u.score)}).`
-        : `Versus its own history, <b>${better[0]}</b> is the better buy right now: score ${Math.round(better[1].score)} against ${Math.round(better[3].score)} for ${better[2]}.`}
-        <span class="muted"> If you need one specific currency, use its own panel below.</span></div>
-      <div class="cmp-item">${gauge(u.score)}<div><b>USD</b><div class="verdict ${u.verdict.key}">${u.verdict.label}</div></div></div>
-    </div>`;
+  // Small banner at the top of the page: best of CAD / USD, plus gold, linking to the details.
+  function summary(res, hName) {
+    const host = document.getElementById("summary");
+    if (!host) return;
+    const c = res["CAD/INR"], u = res["USD/INR"], g = res["XAU/INR"];
+    const fx = [c, u].filter(a => a && a.score != null);
+    if (!fx.length) { host.innerHTML = ""; return; }
+    const best = fx.reduce((x, y) => (y.score > x.score ? y : x));
+    const bestCode = INFO[best.pair].code;
+    const other = fx.find(a => a !== best);
+    const close = other && Math.abs(best.score - other.score) < 5;
+    const headline = close
+      ? `CAD and USD are about even right now`
+      : `Better buy now: <b>${bestCode}</b>`;
+    const mini = a => {
+      const info = INFO[a.pair];
+      return `<a class="mini" href="#sig-${info.code.toLowerCase()}">${chip(info.code)}<span><b>${info.code === "XAU" ? "Gold" : info.code}</b>
+        <span class="verdict ${a.verdict.key}">${Math.round(a.score)} · ${a.verdict.label}</span><small>₹${px(a.now)}${info.perUnit ? " per 10 g" : ""}</small></span></a>`;
+    };
+    host.innerHTML = `<section class="summary glass">
+      <div class="sum-main">${gauge(best.score, "lg")}
+        <div><div class="sum-kicker">Converting INR · judged over ${hName}</div>
+          <div class="sum-head">${headline}</div>
+          <div class="muted small">${close ? `Scores ${Math.round(c.score)} (CAD) and ${Math.round(u.score)} (USD).` : `${M.verdict(best.score).label}: score ${Math.round(best.score)} of 100${other ? `, against ${Math.round(other.score)} for ${INFO[other.pair].code}` : ""}.`}</div>
+        </div></div>
+      <div class="sum-list">${[c, u, g].filter(a => a && a.score != null).map(mini).join("")}</div>
+      <a class="sum-link" href="#signals">See the details and charts ↓</a>
+    </section>`;
   }
 
   function render(history) {
     lastHistory = history;
     const host = document.getElementById("signals");
     if (!host) return;
-    const pairs = ["CAD/INR", "USD/INR"].filter(p => history[p] && history[p].length > 120);
-    if (!pairs.length) { host.innerHTML = ""; return; }
+    const [horizon, hName] = RANGES[range];
+    const pairs = ["CAD/INR", "USD/INR", "XAU/INR"].filter(p => history[p] && history[p].length > 120);
+    if (!pairs.length) { host.innerHTML = ""; summary({}, hName); return; }
     const res = {};
-    pairs.forEach(p => { res[p] = M.analyse(history[p]); res[p].pair = p; });
+    pairs.forEach(p => { res[p] = M.analyse(history[p], horizon); res[p].pair = p; });
+    summary(res, hName);
+    const days = Math.max(...pairs.map(p => history[p].length));
     host.innerHTML = `
       <div class="sig-title">
-        <div><h2>When to buy CAD or USD with rupees</h2>
-        <p class="muted">Five statistical models scored on ${history[pairs[0]].length} days of European Central Bank rates.
+        <div><h2>When to buy CAD, USD or gold with rupees</h2>
+        <p class="muted">Five statistical models scored on up to ${days} trading days of prices. The horizon sets how far back
+        "cheap" is judged (percentile, good and great levels) and how much of the chart is shown.
         Green on the charts marks days the combined score said "buy".</p></div>
-        <div class="seg" role="group" aria-label="Chart range">${Object.keys(RANGES).map(r =>
-          `<button type="button" data-r="${r}" aria-pressed="${r === range}">${r}</button>`).join("")}</div>
+        <div class="seg-wrap"><span class="muted small">Judge over</span>
+        <div class="seg" role="group" aria-label="Scoring horizon">${Object.keys(RANGES).map(r =>
+          `<button type="button" data-r="${r}" aria-pressed="${r === range}">${r}</button>`).join("")}</div></div>
       </div>
-      ${compareLine(res)}
-      <div class="sig-grid">${pairs.map(p => panel(p, res[p])).join("")}</div>
+      <div class="sig-grid">${pairs.map(p => panel(p, res[p], hName)).join("")}</div>
       <div class="disclaimer glass"><b>Not financial advice.</b> These signals are statistical summaries of past
-        exchange rates and cannot predict the future. ECB reference rates differ from the rate your bank or transfer
-        service gives you (their margin is often 1% to 3%, which can outweigh these differences). For large amounts,
-        converting in parts over several weeks reduces the risk of bad timing. Check with a licensed advisor before
-        making significant financial decisions.</div>`;
+        prices and cannot predict the future. Reference rates differ from what your bank, transfer service or jeweller
+        charges (currency margins are often 1% to 3%; Indian retail gold adds import duty and GST), and those costs can
+        outweigh these differences. For large amounts, buying in parts over several weeks reduces the risk of bad timing.
+        Check with a licensed advisor before making significant financial decisions.</div>`;
     host.querySelectorAll(".chart").forEach(box => drawChart(box, res[box.dataset.pair]));
     host.querySelectorAll(".seg button").forEach(b => b.addEventListener("click", () => { range = b.dataset.r; render(lastHistory); }));
   }

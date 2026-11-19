@@ -20,3 +20,13 @@ assert(lo.score > 60 && hi.score < 40);
 assert(lo.levels.great < lo.levels.good && lo.levels.good < lo.levels.median);
 const all = lo.scores.filter(Boolean).map(s => s.total); assert(Math.min(...all) >= 0 && Math.max(...all) <= 100);
 console.log('all model tests passed');
+
+// Horizon changes the percentile part of the score and the buy levels
+{
+  const s = Array.from({ length: 600 }, (_, i) => 50 + i * 0.02 + Math.sin(i / 15));   // long uptrend
+  const P = s.map((x, i) => [new Date(Date.UTC(2024, 0, 1) + i * 864e5).toISOString().slice(0, 10), x]);
+  const a6 = M.analyse(P, 126), a2 = M.analyse(P, 504);
+  assert(a6.parts.percentile !== a2.parts.percentile, 'horizon should change percentile points');
+  assert(a2.levels.good < a6.levels.good, '2Y good level should be lower than 6M in an uptrend');
+  console.log('horizon test passed:', a6.score.toFixed(1), 'vs', a2.score.toFixed(1));
+}

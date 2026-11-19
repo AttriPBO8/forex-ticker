@@ -8,7 +8,7 @@ from your rules (for example "CAD/INR below 65.6").
 Runs free on GitHub Actions. No server needed.
 
 **Setup checklist:** see [TODO.md](TODO.md).
-**Live rates page:** https://attripbo8.github.io/forex-ticker/ (`index.html`, GitHub Pages).
+**Live rates page:** https://attripbo8.github.io/forex-ticker/ (`index.html`, GitHub Pages): CAD, USD and gold in INR, trends, and statistical buy signals (`models.js`, `analysis.js`).
 
 ## Files
 
