@@ -5,12 +5,13 @@
   const NS = "http://www.w3.org/2000/svg";
   const fmt = (x, d = 2) => x == null || isNaN(x) ? "n/a" : x.toFixed(d);
   // Prices: 2 decimals for currencies, whole rupees (Indian grouping) for gold
-  const px = x => x == null || isNaN(x) ? "n/a" : Math.abs(x) >= 1000 ? Math.round(x).toLocaleString("en-IN") : Math.abs(x) >= 1 ? x.toFixed(2) : x.toFixed(5);
+  const px = x => x == null || isNaN(x) ? "n/a" : Math.abs(x) >= 1000 ? Math.round(x).toLocaleString("en-IN") : Math.abs(x) >= 1 ? x.toFixed(2) : Math.abs(x) >= 0.01 || x === 0 ? x.toFixed(5) : x.toPrecision(3);
   // Quote mode for CAD/USD panels: "inr" = rupees per unit (lower is better), "fx" = units per rupee (higher is better)
   let quote = "inr";
-  const inv = pair => quote === "fx" && pair !== "XAU/INR";
+  // INR/CAD and INR/USD (buying rupees) are always shown flipped: rupees per CAD/USD, higher is better.
+  const inv = pair => (INFO[pair] && INFO[pair].rev) || (quote === "fx" && pair !== "XAU/INR");
   const T = (pair, x) => (x == null ? x : inv(pair) ? 1 / x : x);
-  const cur = (pair, x) => inv(pair) ? `${px(T(pair, x))} ${INFO_CODE(pair)}` : `₹${px(x)}`;
+  const cur = (pair, x) => INFO[pair] && INFO[pair].rev ? `₹${px(1 / x)}` : inv(pair) ? `${px(T(pair, x))} ${INFO_CODE(pair)}` : `₹${px(x)}`;
   const INFO_CODE = pair => pair.split("/")[0];
   // Horizon = how far back "cheap vs expensive" is judged, and how much the chart shows.
   const RANGES = { "6M": [126, "6 months"], "1Y": [252, "1 year"], "2Y": [504, "2 years"] };
@@ -20,7 +21,11 @@
     "CAD/INR": { code: "CAD", title: "Buy CAD with INR", sub: "Canadian Dollar price in rupees, lower is better", unit: "CAD" },
     "USD/INR": { code: "USD", title: "Buy USD with INR", sub: "US Dollar price in rupees, lower is better", unit: "USD" },
     "XAU/INR": { code: "XAU", title: "Buy gold with INR", sub: "Price of 10 g in rupees (international spot, before duty and GST), lower is better", unit: "g", perUnit: 10 },
+    // Buying rupees: models run on the rupee's price in CAD/USD (lower = cheaper rupees), shown as ₹ per CAD/USD.
+    "INR/CAD": { code: "CAD", rev: true, title: "Buy INR with CAD", sub: "Rupees you get for 1 CAD, higher is better", unit: "CAD" },
+    "INR/USD": { code: "USD", rev: true, title: "Buy INR with USD", sub: "Rupees you get for 1 USD, higher is better", unit: "USD" },
   };
+  const FX_AMOUNT = 1000;
   const INR_AMOUNT = 100000;
 
   function readings(a, hName) {
@@ -38,7 +43,7 @@
       ["RSI (14-day)", fmt(i.rsi14, 0),
         i.rsi14 < 30 ? "Oversold: the price has fallen fast, bounce risk" : i.rsi14 < 45 ? "Weak momentum (falling)" : i.rsi14 > 70 ? "Overbought: rose fast" : "Neutral momentum",
         p.rsi, 15],
-      ["Kalman trend", `${i.kalmanSlope >= 0 ? "+" : "−"}₹${px(Math.abs(i.kalmanSlope * 21))}/month`,
+      ["Kalman trend", `${i.kalmanSlope >= 0 ? "+" : "−"}${a.pair && a.pair.startsWith("INR/") ? "" : "₹"}${px(Math.abs(i.kalmanSlope * 21))}${a.pair && a.pair.startsWith("INR/") ? " " + a.pair.slice(4) : ""}/month`,
         i.kalmanSlope > 0 ? "Rising: waiting may cost more" : "Falling: waiting may get a better price",
         p.trend, 15],
     ];
@@ -58,33 +63,35 @@
       <tr><td>${name}</td><td class="num">${val}</td><td>${txt}</td>
       <td class="num"><span class="bar"><span style="width:${(pts / max * 100).toFixed(0)}%"></span></span>${pts.toFixed(1)}/${max}</td></tr>`).join("");
     const fc = i.holt.forecast, fcDelta = fc - a.now;
-    const id = "sig-" + info.code.toLowerCase();
-    const iv = inv(pair);
-    const title = iv ? `Convert INR to ${info.code}` : info.title;
-    const sub = iv ? `${info.code} you get for ₹1, higher is better` : info.sub;
+    const id = "sig-" + (info.rev ? "inr-" : "") + info.code.toLowerCase();
+    const iv = inv(pair), rv = !!info.rev;
+    const title = rv ? info.title : iv ? `Convert INR to ${info.code}` : info.title;
+    const sub = rv ? info.sub : iv ? `${info.code} you get for ₹1, higher is better` : info.sub;
     const cmp = iv ? "at or above" : "at or below";
     const show = x => cur(pair, x);
     return `<section class="sig glass" id="${id}" data-pair="${pair}">
       <div class="sig-head">
-        <div class="pair"><span class="chips">${chip(info.code)}${chip("INR")}</span>
+        <div class="pair"><span class="chips">${rv ? chip("INR") + chip(info.code) : chip(info.code) + chip("INR")}</span>
           <span>${title}<small>${sub}</small></span></div>
         <div class="verdict-wrap">${gauge(a.score)}<div><div class="verdict ${v.key}">${v.label}</div><div class="muted small">${v.tip}</div></div></div>
       </div>
       <div class="levels">
-        <div class="lv"><span>Now</span><b>${show(a.now)}</b><small>${iv ? `₹${px(a.now)} per ${info.code}` : `${Math.round(i.pctH * 100)}th percentile of ${hName}`}</small></div>
+        <div class="lv"><span>Now</span><b>${show(a.now)}</b><small>${rv ? `better than ${Math.round((1 - i.pctH) * 100)}% of the past ${hName}` : iv ? `₹${px(a.now)} per ${info.code}` : `${Math.round(i.pctH * 100)}th percentile of ${hName}`}</small></div>
         <div class="lv good"><span>Good buy ${cmp}</span><b>${show(L.good)}</b><small>${iv ? "best" : "cheapest"} 25% of the past ${hName}</small></div>
         <div class="lv great"><span>Great buy ${cmp}</span><b>${show(L.great)}</b><small>${iv ? "best" : "cheapest"} 10% of the past ${hName}</small></div>
-        <div class="lv"><span>5-day forecast (Holt)</span><b>${show(fc)}</b><small>${iv ? `₹${px(fc)} per ${info.code}, trend only` : `${fcDelta >= 0 ? "+" : "−"}${px(Math.abs(fcDelta))} vs now, trend only`}</small></div>
+        <div class="lv"><span>5-day forecast (Holt)</span><b>${show(fc)}</b><small>${rv ? `${1 / fc >= 1 / a.now ? "+" : "−"}₹${fmt(Math.abs(1 / fc - 1 / a.now), 2)} vs now, trend only` : iv ? `₹${px(fc)} per ${info.code}, trend only` : `${fcDelta >= 0 ? "+" : "−"}${px(Math.abs(fcDelta))} vs now, trend only`}</small></div>
       </div>
       <div class="chart-wrap"><div class="chart" data-pair="${pair}"></div><div class="tip" hidden></div></div>
       <div class="legend">
         <span><i class="sw price"></i>Price</span><span><i class="sw kal"></i>Kalman trend</span><span><i class="sw sma"></i>50-day average</span>
         <span><i class="sw band"></i>Bollinger band</span><span><i class="sw zone"></i>Strong buy zone (score ≥ 70)</span><span><i class="sw zone2"></i>Good (55 to 70)</span>
       </div>
-      <p class="explain">₹${INR_AMOUNT.toLocaleString("en-IN")} buys <b>${fmt(buysNow, d)} ${info.unit}</b> today.
+      <p class="explain">${rv ? `${FX_AMOUNT.toLocaleString()} ${info.code} gets <b>₹${Math.round(FX_AMOUNT / a.now).toLocaleString("en-IN")}</b> today.
+        At the good level it would get ₹${Math.round(FX_AMOUNT / L.good).toLocaleString("en-IN")} (${FX_AMOUNT / L.good >= FX_AMOUNT / a.now ? "+" : "−"}₹${Math.round(Math.abs(FX_AMOUNT / L.good - FX_AMOUNT / a.now)).toLocaleString("en-IN")}${FX_AMOUNT / L.good < FX_AMOUNT / a.now ? ": today is already better" : ""}).
+        Past ${hName}: best ${show(L.lowH)}, median ${show(L.median)}, worst ${show(L.highH)} per ${info.code}.</p>` : `₹${INR_AMOUNT.toLocaleString("en-IN")} buys <b>${fmt(buysNow, d)} ${info.unit}</b> today.
         At the good-buy level it would buy ${fmt(buysGood, d)} ${info.unit} (${buysGood >= buysNow ? "+" : ""}${fmt(buysGood - buysNow, d)}).
-        Past ${hName}: ${iv ? `best ${show(L.lowH)}, median ${show(L.median)}, worst ${show(L.highH)} per ₹1` : `low ₹${px(L.lowH)}, median ₹${px(L.median)}, high ₹${px(L.highH)}`}.</p>
-      <details class="why"><summary>Why this score? The numbers behind it${iv ? " (in ₹ per " + info.code + ")" : ""}</summary>
+        Past ${hName}: ${iv ? `best ${show(L.lowH)}, median ${show(L.median)}, worst ${show(L.highH)} per ₹1` : `low ₹${px(L.lowH)}, median ₹${px(L.median)}, high ₹${px(L.highH)}`}.</p>`}
+      <details class="why"><summary>Why this score? The numbers behind it${rv ? ` (models read the rupee's price in ${info.code}: lower means cheaper rupees)` : iv ? " (in ₹ per " + info.code + ")" : ""}</summary>
         <table><thead><tr><th>Model</th><th>Value</th><th>Reading</th><th>Points</th></tr></thead><tbody>${rows}</tbody></table>
       </details>
     </section>`;
@@ -104,8 +111,9 @@
     const a = iv ? { ...a0, values: a0.values.map(f), sma50: a0.sma50.map(f), kalman: a0.kalman.map(f), now: f(a0.now),
       bb: { ...a0.bb, upper: a0.bb.lower.map(f), lower: a0.bb.upper.map(f) },
       levels: { ...a0.levels, good: f(a0.levels.good), great: f(a0.levels.great) } } : a0;
-    const unit = iv ? " " + a0.pair.split("/")[0] : "";
-    const pfx = iv ? "" : "₹";
+    const rv = !!(INFO[a0.pair] && INFO[a0.pair].rev);
+    const unit = iv && !rv ? " " + a0.pair.split("/")[0] : "";
+    const pfx = iv && !rv ? "" : "₹";
     const W = Math.max(280, box.clientWidth), small = W < 520;
     const H1 = small ? 210 : 270, gap = 18, H2 = small ? 60 : 72, padL = 8, padR = small ? 52 : 64, padT = 10;
     const H = padT + H1 + gap + H2 + 22;
@@ -226,9 +234,25 @@
       : `Better buy now: <b>${bestCode}</b>`;
     const mini = a => {
       const info = INFO[a.pair];
-      return `<a class="mini" href="#sig-${info.code.toLowerCase()}">${chip(info.code)}<span><b>${info.code === "XAU" ? "Gold" : info.code}</b>
-        <span class="verdict ${a.verdict.key}">${Math.round(a.score)} · ${a.verdict.label}</span><small>₹${px(a.now)}${info.perUnit ? " per 10 g" : ""}</small></span></a>`;
+      const href = "#sig-" + (info.rev ? "inr-" : "") + info.code.toLowerCase();
+      const name = info.rev ? `INR with ${info.code}` : info.code === "XAU" ? "Gold" : info.code;
+      const price = info.rev ? `₹${px(1 / a.now)} per ${info.code}` : `₹${px(a.now)}${info.perUnit ? " per 10 g" : ""}`;
+      return `<a class="mini" href="${href}">${info.rev ? chip(info.code) : chip(info.code)}<span><b>${name}</b>
+        <span class="verdict ${a.verdict.key}">${Math.round(a.score)} · ${a.verdict.label}</span><small>${price}</small></span></a>`;
     };
+    // Buying rupees with CAD or USD
+    const ri = [res["INR/CAD"], res["INR/USD"]].filter(a => a && a.score != null);
+    let inrRow = "";
+    if (ri.length) {
+      const b2 = ri.reduce((x, y) => (y.score > x.score ? y : x)), o2 = ri.find(a => a !== b2);
+      const even = o2 && Math.abs(b2.score - o2.score) < 5;
+      inrRow = `<div class="sum-row2">
+        <div class="sum-main">${gauge(b2.score)}
+          <div><div class="sum-kicker">Buying INR (sending money to India)</div>
+            <div class="sum-head sm">${even ? "CAD and USD are about even" : `Better to pay with <b>${INFO[b2.pair].code}</b>`}</div>
+            <div class="muted small">${M.verdict(b2.score).label}: score ${Math.round(b2.score)}${o2 ? `, against ${Math.round(o2.score)} with ${INFO[o2.pair].code}` : ""}.</div></div></div>
+        <div class="sum-list">${ri.map(mini).join("")}</div></div>`;
+    }
     host.innerHTML = `<section class="summary glass">
       <div class="sum-main">${gauge(best.score, "lg")}
         <div><div class="sum-kicker">Converting INR · judged over ${hName}</div>
@@ -236,6 +260,7 @@
           <div class="muted small">${close ? `Scores ${Math.round(c.score)} (CAD) and ${Math.round(u.score)} (USD).` : `${M.verdict(best.score).label}: score ${Math.round(best.score)} of 100${other ? `, against ${Math.round(other.score)} for ${INFO[other.pair].code}` : ""}.`}</div>
         </div></div>
       <div class="sum-list">${[c, u, g].filter(a => a && a.score != null).map(mini).join("")}</div>
+      ${inrRow}
       <a class="sum-link" href="#signals">See the details and charts ↓</a>
     </section>`;
   }
@@ -245,7 +270,7 @@
     const host = document.getElementById("signals");
     if (!host) return;
     const [horizon, hName] = RANGES[range];
-    const pairs = ["CAD/INR", "USD/INR", "XAU/INR"].filter(p => history[p] && history[p].length > 120);
+    const pairs = ["CAD/INR", "USD/INR", "XAU/INR", "INR/CAD", "INR/USD"].filter(p => history[p] && history[p].length > 120);
     if (!pairs.length) { host.innerHTML = ""; summary({}, hName); api.results = {}; return; }
     const res = {};
     pairs.forEach(p => { res[p] = M.analyse(history[p], horizon); res[p].pair = p; });
@@ -253,7 +278,7 @@
     const days = Math.max(...pairs.map(p => history[p].length));
     host.innerHTML = `
       <div class="sig-title">
-        <div><h2>When to buy CAD, USD or gold with rupees</h2>
+        <div><h2>When to buy CAD, USD, gold or INR</h2>
         <p class="muted">Five statistical models scored on up to ${days} trading days of prices. The horizon sets how far back
         "cheap" is judged (percentile, good and great levels) and how much of the chart is shown.
         Green on the charts marks days the combined score said "buy".</p></div>
@@ -265,7 +290,11 @@
         <div class="seg" role="group" aria-label="Scoring horizon">${Object.keys(RANGES).map(r =>
           `<button type="button" data-r="${r}" aria-pressed="${r === range}">${r}</button>`).join("")}</div></div>
       </div>
-      <div class="sig-grid">${pairs.map(p => panel(p, res[p], hName)).join("")}</div>
+      <div class="sig-grid">${pairs.filter(p => !INFO[p].rev).map(p => panel(p, res[p], hName)).join("")}</div>
+      ${pairs.some(p => INFO[p].rev) ? `<h3 class="sig-sub" id="buy-inr">Buying INR with CAD or USD</h3>
+      <p class="muted sig-subp">For sending money to India or converting savings back to rupees. Same five models, run on the rupee's price
+        in CAD or USD, so a high score means rupees are cheap (you get more ₹ per dollar). Shown as ₹ per CAD/USD.</p>
+      <div class="sig-grid">${pairs.filter(p => INFO[p].rev).map(p => panel(p, res[p], hName)).join("")}</div>` : ""}
       <div class="disclaimer glass"><b>Not financial advice.</b> These signals are statistical summaries of past
         prices and cannot predict the future. Reference rates differ from what your bank, transfer service or jeweller
         charges (currency margins are often 1% to 3%; Indian retail gold adds import duty and GST), and those costs can

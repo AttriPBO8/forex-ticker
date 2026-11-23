@@ -162,6 +162,12 @@
     .sum-list { justify-content: flex-start; }
   }
 
+  .sum-row2 { grid-column: 1 / -1; display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 14px 22px;
+              padding-top: 14px; border-top: 1px solid var(--glass-line); }
+  .sum-head.sm { font-size: 17px; }
+  .sig-sub { margin: 30px 0 4px; font-size: 19px; font-weight: 800; }
+  .sig-subp { margin: 0 0 14px; font-size: 13px; max-width: 760px; }
+  @media (max-width: 760px) { .sum-row2 { grid-template-columns: 1fr; } }
   /* Converter */
   .converter { margin-top: 18px; padding: 16px 20px; border-radius: 24px; }
   .cv-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
@@ -625,6 +631,14 @@ function renderConverter() {
       : from === "INR" ? (t === "GOLD" ? `₹${Math.round(inrPer.GOLD).toLocaleString("en-IN")} per g` : `₹1 = ${(1 / inrPer[t]).toFixed(5)} ${t}`)
       : (t === "GOLD" ? `1 ${from} = ${(inrPer[from] / inrPer.GOLD).toFixed(4)} g` : `1 ${from} = ${(inrPer[from] / inrPer[t]).toFixed(4)} ${t}`);
     let extra = "";
+    // Paying with CAD/USD for rupees: use the "Buy INR" signals
+    const ar = t === "INR" && from !== "INR" && res["INR/" + from];
+    if (ar && ar.levels) {
+      const v = window.FXModels.verdict(ar.score);
+      const goodInr = amt / ar.levels.good;
+      extra = `<div class="cv-sig"><span class="verdict ${v.key}">${Math.round(ar.score)} · ${v.label}</span>
+        <small>At the good level (₹${(1 / ar.levels.good).toFixed(2)} per ${from}): ${fmtAmt("INR", goodInr)} (${goodInr >= got ? "+" : "−"}${fmtAmt("INR", Math.abs(goodInr - got))})</small></div>`;
+    }
     const a = from === "INR" && res[sigKey[t]];
     if (a && a.levels) {
       const perUnitGood = t === "GOLD" ? a.levels.good / 10 : a.levels.good;
@@ -650,7 +664,8 @@ document.getElementById("cards").addEventListener("click", e => {
 
 function renderSignals() {
   if (!window.FXSignals) return;
-  window.FXSignals.render({ "CAD/INR": history["CAD/INR"], "USD/INR": history["USD/INR"], "XAU/INR": gold.points });
+  window.FXSignals.render({ "CAD/INR": history["CAD/INR"], "USD/INR": history["USD/INR"], "XAU/INR": gold.points,
+    "INR/CAD": history["INR/CAD"], "INR/USD": history["INR/USD"] });
 }
 
 async function update() {
