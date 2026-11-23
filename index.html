@@ -162,6 +162,23 @@
     .sum-list { justify-content: flex-start; }
   }
 
+  /* Converter */
+  .converter { margin-top: 18px; padding: 16px 20px; border-radius: 24px; }
+  .cv-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+  .cv-head h2 { margin: 0; font-size: 18px; font-weight: 800; }
+  .cv-in { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .cv-in input, .cv-in select { font: inherit; font-size: 15px; font-weight: 700; color: var(--text); border-radius: 12px;
+    border: 1px solid var(--glass-line); background: var(--glass-strong); padding: 8px 12px; }
+  .cv-in input { width: 150px; }
+  .cv-in select option { color: #111; }
+  .cv-out { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 10px; margin-top: 14px; }
+  .cv-tile { padding: 12px 14px; border-radius: 16px; background: var(--glass); border: 1px solid var(--glass-line); }
+  .cv-to { display: block; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .cv-tile b { display: block; font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+  .cv-tile small { display: block; font-size: 12px; color: var(--muted); }
+  .cv-sig { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--glass-line); }
+  .cv-sig .verdict { font-size: 13px; }
+
   /* Buy signals */
   #signals { margin-top: 36px; }
   .sig-title { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
@@ -276,6 +293,19 @@
     </div>
   </header>
   <div id="summary"></div>
+  <section id="converter" class="converter glass" aria-label="Currency converter">
+    <div class="cv-head">
+      <h2>Convert</h2>
+      <div class="cv-in">
+        <input id="cv-amt" type="number" min="0" step="any" value="100000" aria-label="Amount to convert">
+        <select id="cv-from" aria-label="From currency">
+          <option value="INR">₹ INR</option><option value="CAD">CAD</option><option value="USD">USD</option>
+        </select>
+        <span class="muted small" id="cv-hint">into</span>
+      </div>
+    </div>
+    <div id="cv-out" class="cv-out"><div class="muted small">Loading rates…</div></div>
+  </section>
   <div id="cards" class="grid" aria-live="polite">
     <div class="skeleton glass"></div><div class="skeleton glass"></div><div class="skeleton glass"></div><div class="skeleton glass"></div>
   </div>
@@ -296,11 +326,11 @@
 <script src="analysis.js"></script>
 <script>
 const DEFAULT_CONFIG = {
-  pairs: ["CAD/INR", "USD/INR", "CAD/USD", "USD/CAD"],
+  pairs: ["CAD/INR", "USD/INR", "CAD/USD", "USD/CAD", "INR/CAD", "INR/USD"],
   rules: [],
   conversion_amount: 100,
   chart_links: ["tradingview", "google"],
-  decimals: { "CAD/INR": 4, "USD/INR": 4, "CAD/USD": 5, "USD/CAD": 5 },
+  decimals: { "CAD/INR": 4, "USD/INR": 4, "CAD/USD": 5, "USD/CAD": 5, "INR/CAD": 5, "INR/USD": 5 },
 };
 const NAMES = { CAD: "Canadian Dollar", USD: "US Dollar", INR: "Indian Rupee" };
 const OPS = { "<": (a, b) => a < b, "<=": (a, b) => a <= b, ">": (a, b) => a > b, ">=": (a, b) => a >= b };
@@ -567,8 +597,48 @@ function render(data) {
   }).join("");
   document.getElementById("cards").innerHTML = html;
   firstRender = false;
+  renderConverter();
   document.getElementById("source").textContent = `${data.source}, as of ${data.asOf}`;
 }
+
+// ---------------------------------------------------------------- converter
+// Converts through rupees using the latest rates; for INR -> CAD/USD/gold it also shows what the
+// same rupees would buy at the buy-signal "good" level, so the metric ties back to the signals.
+const fmtAmt = (code, x) => code === "INR" ? "₹" + x.toLocaleString("en-IN", { maximumFractionDigits: 2 })
+  : code === "GOLD" ? x.toLocaleString(undefined, { maximumFractionDigits: 3 }) + " g"
+  : x.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " " + code;
+function renderConverter() {
+  const out = document.getElementById("cv-out");
+  if (!out || !lastData) return;
+  const amt = Number(document.getElementById("cv-amt").value) || 0;
+  const from = document.getElementById("cv-from").value;
+  const r = lastData.rates;
+  const inrPer = { INR: 1, CAD: r["CAD/INR"], USD: r["USD/INR"], GOLD: gold.now ? gold.now / 10 : null };
+  const res = (window.FXSignals && window.FXSignals.results) || {};
+  const sigKey = { CAD: "CAD/INR", USD: "USD/INR", GOLD: "XAU/INR" };
+  const targets = ["INR", "CAD", "USD", "GOLD"].filter(t => t !== from && inrPer[t]);
+  const inr = amt * inrPer[from];
+  out.innerHTML = targets.map(t => {
+    const got = inr / inrPer[t];
+    const label = t === "GOLD" ? "Gold" : t;
+    const rateLine = t === "INR" ? `1 ${from} = ${fmtAmt("INR", inrPer[from])}`
+      : from === "INR" ? (t === "GOLD" ? `₹${Math.round(inrPer.GOLD).toLocaleString("en-IN")} per g` : `₹1 = ${(1 / inrPer[t]).toFixed(5)} ${t}`)
+      : (t === "GOLD" ? `1 ${from} = ${(inrPer[from] / inrPer.GOLD).toFixed(4)} g` : `1 ${from} = ${(inrPer[from] / inrPer[t]).toFixed(4)} ${t}`);
+    let extra = "";
+    const a = from === "INR" && res[sigKey[t]];
+    if (a && a.levels) {
+      const perUnitGood = t === "GOLD" ? a.levels.good / 10 : a.levels.good;
+      const atGood = inr / perUnitGood;
+      const v = window.FXModels.verdict(a.score);
+      extra = `<div class="cv-sig"><span class="verdict ${v.key}">${Math.round(a.score)} · ${v.label}</span>
+        <small>At the good-buy level (₹${perUnitGood >= 1000 ? Math.round(perUnitGood).toLocaleString("en-IN") : perUnitGood.toFixed(2)}${t === "GOLD" ? "/g" : ""}): ${fmtAmt(t, atGood)} (${atGood >= got ? "+" : "−"}${fmtAmt(t, Math.abs(atGood - got))})</small></div>`;
+    }
+    return `<div class="cv-tile"><span class="cv-to">${label}</span><b>${fmtAmt(t, got)}</b><small>${rateLine}</small>${extra}</div>`;
+  }).join("");
+}
+window.renderConverter = renderConverter;
+document.getElementById("cv-amt").addEventListener("input", renderConverter);
+document.getElementById("cv-from").addEventListener("change", renderConverter);
 
 // Clicking a 1D / 5D / 1M / 3M tile switches that card's chart window
 document.getElementById("cards").addEventListener("click", e => {

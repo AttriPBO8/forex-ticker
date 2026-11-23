@@ -5,7 +5,13 @@
   const NS = "http://www.w3.org/2000/svg";
   const fmt = (x, d = 2) => x == null || isNaN(x) ? "n/a" : x.toFixed(d);
   // Prices: 2 decimals for currencies, whole rupees (Indian grouping) for gold
-  const px = x => x == null || isNaN(x) ? "n/a" : Math.abs(x) >= 1000 ? Math.round(x).toLocaleString("en-IN") : x.toFixed(2);
+  const px = x => x == null || isNaN(x) ? "n/a" : Math.abs(x) >= 1000 ? Math.round(x).toLocaleString("en-IN") : Math.abs(x) >= 1 ? x.toFixed(2) : x.toFixed(5);
+  // Quote mode for CAD/USD panels: "inr" = rupees per unit (lower is better), "fx" = units per rupee (higher is better)
+  let quote = "inr";
+  const inv = pair => quote === "fx" && pair !== "XAU/INR";
+  const T = (pair, x) => (x == null ? x : inv(pair) ? 1 / x : x);
+  const cur = (pair, x) => inv(pair) ? `${px(T(pair, x))} ${INFO_CODE(pair)}` : `₹${px(x)}`;
+  const INFO_CODE = pair => pair.split("/")[0];
   // Horizon = how far back "cheap vs expensive" is judged, and how much the chart shows.
   const RANGES = { "6M": [126, "6 months"], "1Y": [252, "1 year"], "2Y": [504, "2 years"] };
   let range = "1Y";
@@ -53,17 +59,22 @@
       <td class="num"><span class="bar"><span style="width:${(pts / max * 100).toFixed(0)}%"></span></span>${pts.toFixed(1)}/${max}</td></tr>`).join("");
     const fc = i.holt.forecast, fcDelta = fc - a.now;
     const id = "sig-" + info.code.toLowerCase();
+    const iv = inv(pair);
+    const title = iv ? `Convert INR to ${info.code}` : info.title;
+    const sub = iv ? `${info.code} you get for ₹1, higher is better` : info.sub;
+    const cmp = iv ? "at or above" : "at or below";
+    const show = x => cur(pair, x);
     return `<section class="sig glass" id="${id}" data-pair="${pair}">
       <div class="sig-head">
         <div class="pair"><span class="chips">${chip(info.code)}${chip("INR")}</span>
-          <span>${info.title}<small>${info.sub}</small></span></div>
+          <span>${title}<small>${sub}</small></span></div>
         <div class="verdict-wrap">${gauge(a.score)}<div><div class="verdict ${v.key}">${v.label}</div><div class="muted small">${v.tip}</div></div></div>
       </div>
       <div class="levels">
-        <div class="lv"><span>Now</span><b>₹${px(a.now)}</b><small>${Math.round(i.pctH * 100)}th percentile of ${hName}</small></div>
-        <div class="lv good"><span>Good buy at or below</span><b>₹${px(L.good)}</b><small>cheapest 25% of the past ${hName}</small></div>
-        <div class="lv great"><span>Great buy at or below</span><b>₹${px(L.great)}</b><small>cheapest 10% of the past ${hName}</small></div>
-        <div class="lv"><span>5-day forecast (Holt)</span><b>₹${px(fc)}</b><small>${fcDelta >= 0 ? "+" : "−"}${px(Math.abs(fcDelta))} vs now, trend only</small></div>
+        <div class="lv"><span>Now</span><b>${show(a.now)}</b><small>${iv ? `₹${px(a.now)} per ${info.code}` : `${Math.round(i.pctH * 100)}th percentile of ${hName}`}</small></div>
+        <div class="lv good"><span>Good buy ${cmp}</span><b>${show(L.good)}</b><small>${iv ? "best" : "cheapest"} 25% of the past ${hName}</small></div>
+        <div class="lv great"><span>Great buy ${cmp}</span><b>${show(L.great)}</b><small>${iv ? "best" : "cheapest"} 10% of the past ${hName}</small></div>
+        <div class="lv"><span>5-day forecast (Holt)</span><b>${show(fc)}</b><small>${iv ? `₹${px(fc)} per ${info.code}, trend only` : `${fcDelta >= 0 ? "+" : "−"}${px(Math.abs(fcDelta))} vs now, trend only`}</small></div>
       </div>
       <div class="chart-wrap"><div class="chart" data-pair="${pair}"></div><div class="tip" hidden></div></div>
       <div class="legend">
@@ -72,8 +83,8 @@
       </div>
       <p class="explain">₹${INR_AMOUNT.toLocaleString("en-IN")} buys <b>${fmt(buysNow, d)} ${info.unit}</b> today.
         At the good-buy level it would buy ${fmt(buysGood, d)} ${info.unit} (${buysGood >= buysNow ? "+" : ""}${fmt(buysGood - buysNow, d)}).
-        Past ${hName}: low ₹${px(L.lowH)}, median ₹${px(L.median)}, high ₹${px(L.highH)}.</p>
-      <details class="why"><summary>Why this score? The numbers behind it</summary>
+        Past ${hName}: ${iv ? `best ${show(L.lowH)}, median ${show(L.median)}, worst ${show(L.highH)} per ₹1` : `low ₹${px(L.lowH)}, median ₹${px(L.median)}, high ₹${px(L.highH)}`}.</p>
+      <details class="why"><summary>Why this score? The numbers behind it${iv ? " (in ₹ per " + info.code + ")" : ""}</summary>
         <table><thead><tr><th>Model</th><th>Value</th><th>Reading</th><th>Points</th></tr></thead><tbody>${rows}</tbody></table>
       </details>
     </section>`;
@@ -86,8 +97,15 @@
     return e;
   }
 
-  function drawChart(box, a) {
+  function drawChart(box, a0) {
     box.innerHTML = "";
+    // In "units per rupee" mode, draw everything as 1/x so higher means a better deal.
+    const iv = inv(a0.pair), f = x => (x == null ? null : iv ? 1 / x : x);
+    const a = iv ? { ...a0, values: a0.values.map(f), sma50: a0.sma50.map(f), kalman: a0.kalman.map(f), now: f(a0.now),
+      bb: { ...a0.bb, upper: a0.bb.lower.map(f), lower: a0.bb.upper.map(f) },
+      levels: { ...a0.levels, good: f(a0.levels.good), great: f(a0.levels.great) } } : a0;
+    const unit = iv ? " " + a0.pair.split("/")[0] : "";
+    const pfx = iv ? "" : "₹";
     const W = Math.max(280, box.clientWidth), small = W < 520;
     const H1 = small ? 210 : 270, gap = 18, H2 = small ? 60 : 72, padL = 8, padR = small ? 52 : 64, padT = 10;
     const H = padT + H1 + gap + H2 + 22;
@@ -95,7 +113,7 @@
     const idx = [...Array(show).keys()].map(k => s0 + k);
     const vals = idx.map(i => a.values[i]);
     const lows = idx.map(i => a.bb.lower[i]).filter(x => x != null), highs = idx.map(i => a.bb.upper[i]).filter(x => x != null);
-    let lo = Math.min(...vals, ...lows, a.levels.great), hi = Math.max(...vals, ...highs);
+    let lo = Math.min(...vals, ...lows, a.levels.great), hi = Math.max(...vals, ...highs, a.levels.great);
     const padY = (hi - lo) * 0.06; lo -= padY; hi += padY;
     const X = k => padL + k * (W - padL - padR) / (show - 1);
     const Y = v => padT + (hi - v) / (hi - lo) * H1;
@@ -153,7 +171,7 @@
     [["good", a.levels.good, "Good"], ["great", a.levels.great, "Great"]].forEach(([cls, v, lbl]) => {
       if (v < lo || v > hi) return;
       el("line", { x1: padL, x2: W - padR, y1: Y(v), y2: Y(v), class: "lvl " + cls }, svg);
-      el("text", { x: padL + 4, y: Y(v) - 4, class: "lvl-t " + cls }, svg).textContent = `${lbl} ≤ ${px(v)}`;
+      el("text", { x: padL + 4, y: Y(v) - 4, class: "lvl-t " + cls }, svg).textContent = `${lbl} ${iv ? "≥" : "≤"} ${px(v)}`;
     });
 
     const lastK = show - 1;
@@ -181,7 +199,7 @@
       dot.setAttribute("cx", X(k)); dot.setAttribute("cy", Y(a.values[i])); dot.setAttribute("visibility", "visible");
       tip.hidden = false;
       tip.innerHTML = `<b>${new Date(a.dates[i] + "T00:00:00Z").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })}</b><br>
-        Price ₹${px(a.values[i])}<br>${s ? `Score ${Math.round(s.total)}: ${M.verdict(s.total).label}` : "Score: not enough history"}`;
+        ${iv ? "Rate" : "Price"} ${pfx}${px(a.values[i])}${unit}<br>${s ? `Score ${Math.round(s.total)}: ${M.verdict(s.total).label}` : "Score: not enough history"}`;
       const tx = X(k) + 14, tw = tip.offsetWidth;
       tip.style.left = (tx + tw > W ? X(k) - tw - 14 : tx) + "px";
       tip.style.top = Math.max(0, Y(a.values[i]) - 30) + "px";
@@ -228,7 +246,7 @@
     if (!host) return;
     const [horizon, hName] = RANGES[range];
     const pairs = ["CAD/INR", "USD/INR", "XAU/INR"].filter(p => history[p] && history[p].length > 120);
-    if (!pairs.length) { host.innerHTML = ""; summary({}, hName); return; }
+    if (!pairs.length) { host.innerHTML = ""; summary({}, hName); api.results = {}; return; }
     const res = {};
     pairs.forEach(p => { res[p] = M.analyse(history[p], horizon); res[p].pair = p; });
     summary(res, hName);
@@ -239,6 +257,10 @@
         <p class="muted">Five statistical models scored on up to ${days} trading days of prices. The horizon sets how far back
         "cheap" is judged (percentile, good and great levels) and how much of the chart is shown.
         Green on the charts marks days the combined score said "buy".</p></div>
+        <div class="seg-wrap"><span class="muted small">Show as</span>
+        <div class="seg" role="group" aria-label="Quote">
+          <button type="button" data-q="inr" aria-pressed="${quote === "inr"}">₹ per CAD/USD</button>
+          <button type="button" data-q="fx" aria-pressed="${quote === "fx"}">CAD/USD per ₹</button></div></div>
         <div class="seg-wrap"><span class="muted small">Judge over</span>
         <div class="seg" role="group" aria-label="Scoring horizon">${Object.keys(RANGES).map(r =>
           `<button type="button" data-r="${r}" aria-pressed="${r === range}">${r}</button>`).join("")}</div></div>
@@ -250,7 +272,10 @@
         outweigh these differences. For large amounts, buying in parts over several weeks reduces the risk of bad timing.
         Check with a licensed advisor before making significant financial decisions.</div>`;
     host.querySelectorAll(".chart").forEach(box => drawChart(box, res[box.dataset.pair]));
-    host.querySelectorAll(".seg button").forEach(b => b.addEventListener("click", () => { range = b.dataset.r; render(lastHistory); }));
+    host.querySelectorAll(".seg button[data-r]").forEach(b => b.addEventListener("click", () => { range = b.dataset.r; render(lastHistory); }));
+    host.querySelectorAll(".seg button[data-q]").forEach(b => b.addEventListener("click", () => { quote = b.dataset.q; render(lastHistory); }));
+    api.results = res; api.horizonName = hName;
+    if (typeof window.renderConverter === "function") window.renderConverter();
   }
 
   let rt, lastW = window.innerWidth;
@@ -259,5 +284,6 @@
     lastW = window.innerWidth;
     clearTimeout(rt); rt = setTimeout(() => lastHistory && render(lastHistory), 200);
   });
-  window.FXSignals = { render };
+  const api = { render, results: {}, horizonName: "" };
+  window.FXSignals = api;
 })();

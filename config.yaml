@@ -13,6 +13,8 @@ pairs:
   - USD/INR
   - CAD/USD
   - USD/CAD
+  - INR/CAD
+  - INR/USD
 
 # Email window. The checker runs every hour, but emails only go out inside this window.
 # Times use the timezone below, and daylight saving time is handled automatically.
@@ -71,6 +73,8 @@ decimals:
   USD/INR: 4
   CAD/USD: 5
   USD/CAD: 5
+  INR/CAD: 5
+  INR/USD: 5
 
 # Conversion examples shown for each pair, e.g. "100 CAD = 6,541.00 INR".
 conversion_amount: 100
