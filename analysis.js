@@ -313,6 +313,6 @@
     lastW = window.innerWidth;
     clearTimeout(rt); rt = setTimeout(() => lastHistory && render(lastHistory), 200);
   });
-  const api = { render, results: {}, horizonName: "" };
+  const api = { render, results: {}, horizonName: "", rerender: () => lastHistory && render(lastHistory) };
   window.FXSignals = api;
 })();
