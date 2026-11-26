@@ -269,6 +269,10 @@
   .bar span { display: block; height: 100%; background: var(--up); }
   .disclaimer { margin-top: 22px; padding: 14px 18px; border-radius: 18px; font-size: 13px; color: var(--muted); border-color: var(--alert-line); }
   .disclaimer b { color: var(--alert-line); }
+  .warn-top { display: flex; align-items: flex-start; gap: 10px; margin: 0 0 14px; padding: 12px 16px; border-radius: 14px;
+              border: 1px solid var(--alert-line); background: color-mix(in srgb, var(--alert-line) 14%, transparent);
+              color: var(--text); font-size: 14px; line-height: 1.45; }
+  .warn-top .ico { flex: none; color: var(--alert-line); font-weight: 800; }
   @media (max-width: 700px) {
     .levels { grid-template-columns: repeat(2, 1fr); }
     .compare { grid-template-columns: 1fr 1fr; }
@@ -350,6 +354,7 @@
     <button id="refresh" type="button">Refresh</button>
     <button id="design" type="button" title="Switch design">Design</button>
   </div>
+  <div class="warn-top" role="note" aria-label="Disclaimer"><span class="ico" aria-hidden="true">⚠</span><span><b>Not an investment or trading Advice but a technical project to learn.</b> Developer not responsible for any profits or losses based on the data.</span></div>
   <div id="summary"></div>
   <section id="converter" class="converter glass" aria-label="Currency converter">
     <div class="cv-head">
